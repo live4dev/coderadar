@@ -1,0 +1,31 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    database_url: str = "sqlite:///./coderadar.db"
+    repos_cache_dir: str = "./repos_cache"
+    log_level: str = "INFO"
+
+    # Bitbucket defaults (can be overridden per-repository)
+    bitbucket_username: str = ""
+    bitbucket_app_password: str = ""
+
+    # GitLab defaults (can be overridden per-repository)
+    gitlab_token: str = ""
+    gitlab_base_url: str = "https://gitlab.com"
+
+    @property
+    def repos_cache_path(self) -> Path:
+        p = Path(self.repos_cache_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+
+settings = Settings()

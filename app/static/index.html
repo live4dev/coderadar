@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeRadar</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --orange: #f97316;
+    --blue: #38bdf8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  header .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-hover);
+    letter-spacing: -0.5px;
+    cursor: pointer;
+  }
+
+  header .logo span { color: var(--text-muted); font-weight: 400; }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-left: 12px;
+  }
+
+  .breadcrumb .sep { color: var(--border); }
+  .breadcrumb a { color: var(--accent-hover); cursor: pointer; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+
+  header .spacer { flex: 1; }
+
+  header .api-link {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  header .api-link:hover { border-color: var(--accent); color: var(--accent-hover); }
+
+  /* ── Layout ── */
+  .layout { display: flex; flex: 1; overflow: hidden; }
+
+  .sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    padding: 0 12px;
+    margin-bottom: 20px;
+  }
+
+  .sidebar-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    padding: 0 8px;
+    margin-bottom: 6px;
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-muted);
+    transition: all 0.1s;
+  }
+
+  .sidebar-item:hover { background: var(--surface2); color: var(--text); }
+  .sidebar-item.active { background: var(--accent); color: #fff; }
+  .sidebar-item .icon { width: 16px; text-align: center; }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 32px;
+  }
+
+  .page-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .page-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+  }
+
+  /* ── Cards ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .card:hover { border-color: var(--accent); }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .card-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    line-height: 1.6;
+  }
+
+  .card-footer {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+
+  .tag.accent { background: rgba(99,102,241,0.15); border-color: var(--accent); color: var(--accent-hover); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent-hover); }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .tab {
+    padding: 10px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent-hover); border-bottom-color: var(--accent); }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  /* ── Score bars ── */
+  .score-bar-wrap { display: flex; align-items: center; gap: 10px; }
+  .score-bar { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .score-fill.high { background: var(--green); }
+  .score-fill.mid  { background: var(--yellow); }
+  .score-fill.low  { background: var(--red); }
+  .score-num { min-width: 36px; text-align: right; font-weight: 600; font-size: 13px; }
+
+  /* ── Severity badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .badge.critical { background: rgba(239,68,68,0.2); color: #f87171; }
+  .badge.high     { background: rgba(249,115,22,0.2); color: #fb923c; }
+  .badge.medium   { background: rgba(245,158,11,0.2); color: #fbbf24; }
+  .badge.low      { background: rgba(100,116,139,0.2); color: #94a3b8; }
+
+  /* ── Status badges ── */
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .status.completed::before { background: var(--green); }
+  .status.running::before   { background: var(--blue); animation: pulse 1s infinite; }
+  .status.failed::before    { background: var(--red); }
+  .status.pending::before   { background: var(--text-muted); }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ── Stats row ── */
+  .stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    min-width: 130px;
+  }
+
+  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 700; }
+  .stat-sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Section header ── */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-title  { font-size: 15px; font-weight: 600; }
+
+  /* ── Empty / loading / error ── */
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+  .empty .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty p { font-size: 14px; }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-banner {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #f87171;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Scan list ── */
+  .scan-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .scan-row:last-child { border-bottom: none; }
+  .scan-row .sha { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+
+  /* ── Language bar ── */
+  .lang-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+  .lang-segment { height: 100%; transition: width 0.4s; }
+
+  .lang-colors { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+  .lang-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    .sidebar { display: none; }
+    main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo" onclick="navigate('projects')">Code<span>Radar</span></div>
+  <nav class="breadcrumb" id="breadcrumb"></nav>
+  <div class="spacer"></div>
+  <a href="/docs" target="_blank" class="api-link">API Docs ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navigation</div>
+      <div class="sidebar-item active" id="nav-projects" onclick="navigate('projects')">
+        <span class="icon">📁</span> Projects
+      </div>
+    </div>
+    <div class="sidebar-section" id="sidebar-repo-section" style="display:none">
+      <div class="sidebar-label">Repository</div>
+      <div class="sidebar-item" id="nav-scans" onclick="navigate('scans')">
+        <span class="icon">🔍</span> Scans
+      </div>
+    </div>
+    <div class="sidebar-section" id="sidebar-scan-section" style="display:none">
+      <div class="sidebar-label">Current Scan</div>
+      <div class="sidebar-item" id="nav-summary" onclick="showTab('summary')">
+        <span class="icon">📊</span> Summary
+      </div>
+      <div class="sidebar-item" id="nav-languages" onclick="showTab('languages')">
+        <span class="icon">🌐</span> Languages
+      </div>
+      <div class="sidebar-item" id="nav-scores" onclick="showTab('scores')">
+        <span class="icon">⭐</span> Scores
+      </div>
+      <div class="sidebar-item" id="nav-risks" onclick="showTab('risks')">
+        <span class="icon">⚠️</span> Risks
+      </div>
+      <div class="sidebar-item" id="nav-developers" onclick="showTab('developers')">
+        <span class="icon">👥</span> Developers
+      </div>
+    </div>
+  </aside>
+
+  <main id="main-content">
+    <div class="empty"><div class="icon">⏳</div><p>Loading…</p></div>
+  </main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = '/api/v1';
+let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+
+// Language color palette
+const LANG_COLORS = [
+  '#6366f1','#22c55e','#f59e0b','#38bdf8','#f97316',
+  '#a78bfa','#34d399','#fb7185','#60a5fa','#facc15',
+];
+
+// ── Router ────────────────────────────────────────────────────────────────
+function navigate(view, ids = {}) {
+  Object.assign(state, { view, ...ids });
+  render();
+}
+
+function showTab(tab) {
+  state.tab = tab;
+  renderScanDetail();
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${txt}`);
+  }
+  return res.json();
+}
+
+function fmt(n) {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtBytes(n) {
+  if (n == null) return '—';
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+function scoreClass(s) {
+  return s >= 70 ? 'high' : s >= 40 ? 'mid' : 'low';
+}
+
+function setMain(html) {
+  document.getElementById('main-content').innerHTML = html;
+}
+
+function showError(err) {
+  setMain(`<div class="error-banner">⚠ ${err.message || err}</div>`);
+}
+
+// ── Breadcrumb & sidebar ──────────────────────────────────────────────────
+function updateNav() {
+  const bc = document.getElementById('breadcrumb');
+  const parts = [];
+
+  if (state.view !== 'projects') {
+    parts.push(`<a onclick="navigate('projects')">Projects</a>`);
+  }
+
+  const showRepoSection = ['scans', 'scan'].includes(state.view);
+  document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
+  document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
+
+  // Active nav items
+  ['projects','scans','summary','languages','scores','risks','developers'].forEach(id => {
+    const el = document.getElementById('nav-' + id);
+    if (el) el.classList.toggle('active', false);
+  });
+
+  if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
+  if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
+  if (state.view === 'scan') {
+    const el = document.getElementById('nav-' + state.tab);
+    if (el) el.classList.add('active');
+  }
+
+  bc.innerHTML = parts.join('<span class="sep">/</span>');
+}
+
+// ── Views ─────────────────────────────────────────────────────────────────
+async function render() {
+  updateNav();
+  setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+  try {
+    if (state.view === 'projects') await renderProjects();
+    else if (state.view === 'repos')  await renderRepos();
+    else if (state.view === 'scans')  await renderScans();
+    else if (state.view === 'scan')   await renderScanDetail();
+  } catch (e) { showError(e); }
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────
+async function renderProjects() {
+  const projects = await api('/projects');
+  let html = `
+    <div class="page-title">Projects</div>
+    <div class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''}</div>
+  `;
+
+  if (!projects.length) {
+    html += `<div class="empty"><div class="icon">📂</div><p>No projects yet. Add one via the API.</p></div>`;
+  } else {
+    html += '<div class="card-grid">';
+    for (const p of projects) {
+      html += `
+        <div class="card" onclick="navigate('repos', {projectId: ${p.id}})">
+          <div class="card-title">${esc(p.name)}</div>
+          <div class="card-meta">${esc(p.description || 'No description')} · ID ${p.id}</div>
+          <div class="card-footer">
+            <span class="tag accent">View repos →</span>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  setMain(html);
+}
+
+// ── Repositories ──────────────────────────────────────────────────────────
+async function renderRepos() {
+  const [project, allRepos] = await Promise.all([
+    api('/projects/' + state.projectId),
+    api('/projects/' + state.projectId + '/repositories'),
+  ]);
+
+  let html = `
+    <div class="page-title">${esc(project.name)}</div>
+    <div class="page-subtitle">${esc(project.description || '')} · ${allRepos.length} repositor${allRepos.length !== 1 ? 'ies' : 'y'}</div>
+  `;
+
+  if (!allRepos.length) {
+    html += `<div class="empty"><div class="icon">📦</div><p>No repositories. Add one via the API or create a scan with local_scan.py.</p></div>`;
+  } else {
+    html += '<div class="card-grid">';
+    for (const r of allRepos) {
+      html += `
+        <div class="card" onclick="navigate('scans', {projectId: ${state.projectId}, repoId: ${r.id}})">
+          <div class="card-title">${esc(r.name)}</div>
+          <div class="card-meta">
+            ${esc(r.provider_type)} · ${esc(r.default_branch || 'main')}
+            ${r.last_commit_sha ? '<br><span style="font-family:monospace;font-size:11px">' + esc(r.last_commit_sha.slice(0,8)) + '</span>' : ''}
+          </div>
+          <div class="card-footer">
+            <span class="tag">${esc(r.provider_type)}</span>
+            <span class="tag accent">View scans →</span>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  setMain(html);
+}
+
+// ── Scans list ────────────────────────────────────────────────────────────
+async function renderScans() {
+  const [repo, scans] = await Promise.all([
+    api('/repositories/' + state.repoId),
+    api('/repositories/' + state.repoId + '/scans'),
+  ]);
+
+  let html = `
+    <div class="section-header">
+      <div>
+        <div class="page-title">${esc(repo.name)}</div>
+        <div class="page-subtitle">${esc(repo.url)}</div>
+      </div>
+      <button class="btn btn-primary" id="scan-btn" onclick="triggerScan()">▶ Run Scan</button>
+    </div>
+  `;
+
+  if (!scans.length) {
+    html += `<div class="empty"><div class="icon">🔍</div><p>No scans yet. Click "Run Scan" to start.</p></div>`;
+  } else {
+    html += `<table>
+      <thead><tr>
+        <th>ID</th><th>Branch</th><th>Status</th>
+        <th>Files</th><th>LOC</th><th>Language</th>
+        <th>Started</th><th></th>
+      </tr></thead><tbody>`;
+    for (const s of scans) {
+      html += `<tr>
+        <td>#${s.id}</td>
+        <td><code style="font-size:12px">${esc(s.branch)}</code></td>
+        <td><span class="status ${s.status}">${esc(s.status)}</span></td>
+        <td>${fmt(s.total_files)}</td>
+        <td>${fmt(s.total_loc)}</td>
+        <td>${esc(s.primary_language || '—')}</td>
+        <td>${fmtDate(s.started_at)}</td>
+        <td>
+          ${s.status === 'completed'
+            ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px"
+                onclick="navigate('scan', {projectId: ${state.projectId}, repoId: ${state.repoId}, scanId: ${s.id}, tab:'summary'})">
+                View →
+              </button>`
+            : ''}
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  setMain(html);
+}
+
+async function triggerScan() {
+  const btn = document.getElementById('scan-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Starting…'; }
+  try {
+    const result = await api('/repositories/' + state.repoId + '/scan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+    // Poll for completion
+    await pollScan(result.scan_id || result.id);
+    await renderScans();
+  } catch (e) {
+    showError(e);
+  }
+}
+
+async function pollScan(scanId) {
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const scan = await api('/scans/' + scanId);
+    if (scan.status === 'completed' || scan.status === 'failed') return scan;
+    // Update button
+    const btn = document.getElementById('scan-btn');
+    if (btn) btn.innerHTML = '<span class="spinner"></span> Scanning…';
+  }
+}
+
+// ── Scan Detail ───────────────────────────────────────────────────────────
+async function renderScanDetail() {
+  updateNav();
+  setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+
+  try {
+    const scan = await api('/scans/' + state.scanId + '/summary');
+
+    let content = '';
+    if (state.tab === 'summary')    content = await buildSummaryTab(scan);
+    if (state.tab === 'languages')  content = await buildLanguagesTab();
+    if (state.tab === 'scores')     content = await buildScoresTab(scan);
+    if (state.tab === 'risks')      content = await buildRisksTab();
+    if (state.tab === 'developers') content = await buildDevelopersTab();
+
+    const tabs = ['summary','languages','scores','risks','developers']
+      .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">
+        ${{summary:'Summary',languages:'Languages',scores:'Scores',risks:'Risks',developers:'Developers'}[t]}
+      </div>`).join('');
+
+    setMain(`
+      <div class="page-title">Scan #${state.scanId}</div>
+      <div class="page-subtitle">
+        <span class="status ${scan.status}">${scan.status}</span>
+        &nbsp;·&nbsp; Branch: <code>${esc(scan.branch)}</code>
+        ${scan.commit_sha ? '&nbsp;·&nbsp; <code style="font-size:11px">' + esc(scan.commit_sha.slice(0,8)) + '</code>' : ''}
+        &nbsp;·&nbsp; ${fmtDate(scan.started_at)}
+      </div>
+      <div class="tabs">${tabs}</div>
+      ${content}
+    `);
+  } catch(e) { showError(e); }
+}
+
+// ── Summary tab ───────────────────────────────────────────────────────────
+async function buildSummaryTab(scan) {
+  return `
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-label">Files</div>
+        <div class="stat-value">${fmt(scan.total_files)}</div>
+        <div class="stat-sub">${fmt(scan.file_count_source)} source · ${fmt(scan.file_count_test)} test</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Lines of Code</div>
+        <div class="stat-value">${fmt(scan.total_loc)}</div>
+        <div class="stat-sub">avg ${Math.round(scan.avg_file_loc || 0)} per file</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Size</div>
+        <div class="stat-value">${fmtBytes(scan.size_bytes)}</div>
+        <div class="stat-sub">${fmt(scan.large_files_count)} large files</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Project type</div>
+        <div class="stat-value" style="font-size:15px;padding-top:4px">${esc(scan.project_type || '—')}</div>
+        <div class="stat-sub">${esc(scan.primary_language || '—')}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Languages tab ─────────────────────────────────────────────────────────
+async function buildLanguagesTab() {
+  const langs = await api('/scans/' + state.scanId + '/languages');
+  if (!langs.length) return '<div class="empty"><div class="icon">🌐</div><p>No language data.</p></div>';
+
+  const segments = langs.map((l, i) =>
+    `<div class="lang-segment" style="width:${l.percentage.toFixed(1)}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`
+  ).join('');
+
+  const dots = langs.map((l, i) =>
+    `<span><span class="lang-dot" style="background:${LANG_COLORS[i % LANG_COLORS.length]}"></span>${esc(l.language)} ${l.percentage.toFixed(1)}%</span>`
+  ).join('');
+
+  let rows = langs.map(l => `<tr>
+    <td>${esc(l.language)}</td>
+    <td>${fmt(l.file_count)}</td>
+    <td>${fmt(l.loc)}</td>
+    <td>
+      <div class="score-bar-wrap">
+        <div class="score-bar"><div class="score-fill high" style="width:${l.percentage.toFixed(1)}%"></div></div>
+        <span class="score-num" style="font-size:12px">${l.percentage.toFixed(1)}%</span>
+      </div>
+    </td>
+  </tr>`).join('');
+
+  return `
+    <div class="lang-bar">${segments}</div>
+    <div class="lang-colors" style="margin-bottom:24px">${dots}</div>
+    <table>
+      <thead><tr><th>Language</th><th>Files</th><th>LOC</th><th>Share</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Scores tab ────────────────────────────────────────────────────────────
+async function buildScoresTab(scan) {
+  const scores = await api('/scans/' + state.scanId + '/scores');
+  const overall = scores.find(s => s.domain === 'overall');
+
+  let rows = scores.filter(s => s.domain !== 'overall').map(s => {
+    const cls = scoreClass(s.score);
+    return `<tr>
+      <td style="text-transform:capitalize;font-weight:500">${esc(s.domain.replace(/_/g,' '))}</td>
+      <td style="width:60%">
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill ${cls}" style="width:${s.score}%"></div></div>
+          <span class="score-num" style="color:var(--${cls === 'high' ? 'green' : cls === 'mid' ? 'yellow' : 'red'})">${s.score.toFixed(1)}</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const ov = overall ? overall.score : 0;
+  const ovCls = scoreClass(ov);
+
+  return `
+    <div style="display:flex;align-items:center;gap:24px;margin-bottom:28px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+      <div style="text-align:center;min-width:80px">
+        <div style="font-size:42px;font-weight:800;color:var(--${ovCls === 'high' ? 'green' : ovCls === 'mid' ? 'yellow' : 'red'})">${ov.toFixed(0)}</div>
+        <div style="font-size:12px;color:var(--text-muted)">Overall</div>
+      </div>
+      <div style="flex:1">
+        <div class="score-bar" style="height:10px"><div class="score-fill ${ovCls}" style="width:${ov}%"></div></div>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Domain</th><th>Score</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Risks tab ─────────────────────────────────────────────────────────────
+async function buildRisksTab() {
+  const risks = await api('/scans/' + state.scanId + '/risks');
+  if (!risks.length) return `<div class="empty"><div class="icon">✅</div><p>No risks detected.</p></div>`;
+
+  const counts = {};
+  risks.forEach(r => counts[r.severity] = (counts[r.severity] || 0) + 1);
+
+  const summary = ['critical','high','medium','low'].filter(s => counts[s]).map(s =>
+    `<div class="stat-box" style="min-width:100px">
+      <div class="stat-label">${s}</div>
+      <div class="stat-value" style="font-size:28px">${counts[s]}</div>
+    </div>`
+  ).join('');
+
+  let rows = risks.map(r => `<tr>
+    <td><span class="badge ${r.severity}">${r.severity}</span></td>
+    <td style="font-weight:500">${esc(r.title)}</td>
+    <td style="color:var(--text-muted);font-size:12px">${esc(r.description || '')}</td>
+    <td><span class="tag" style="font-size:11px">${esc(r.entity_type || 'project')}</span></td>
+  </tr>`).join('');
+
+  return `
+    <div class="stats-row" style="margin-bottom:24px">${summary}</div>
+    <table>
+      <thead><tr><th>Severity</th><th>Risk</th><th>Description</th><th>Scope</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Developers tab ────────────────────────────────────────────────────────
+async function buildDevelopersTab() {
+  const devs = await api('/scans/' + state.scanId + '/developers');
+  if (!devs.length) return `<div class="empty"><div class="icon">👥</div><p>No developer data.</p></div>`;
+
+  const total = devs.reduce((s, d) => s + d.commit_count, 0);
+
+  let rows = devs.map((d, i) => {
+    const share = total > 0 ? (d.commit_count / total * 100).toFixed(1) : 0;
+    return `<tr>
+      <td>
+        <div style="font-weight:600">${esc(d.developer.canonical_username)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(d.developer.primary_email || '')}</div>
+      </td>
+      <td>${fmt(d.commit_count)}</td>
+      <td>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill high" style="width:${share}%"></div></div>
+          <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+        </div>
+      </td>
+      <td>${fmt(d.insertions)}</td>
+      <td>${fmt(d.deletions)}</td>
+      <td>${fmt(d.files_changed)}</td>
+      <td>${fmt(d.active_days)} days</td>
+      <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <table>
+      <thead><tr>
+        <th>Developer</th><th>Commits</th><th>Share</th>
+        <th>Insertions</th><th>Deletions</th><th>Files</th>
+        <th>Active days</th><th>Last commit</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+navigate('projects');
+</script>
+</body>
+</html>
