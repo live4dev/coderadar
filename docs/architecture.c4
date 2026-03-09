@@ -1,0 +1,513 @@
+/**
+ * CodeRadar — Architecture as Code (LikeC4)
+ *
+ * Levels:
+ *  L1 — System Context   : view index
+ *  L2 — Containers       : view containers
+ *  L3 — Scan Pipeline    : view scanPipeline
+ *  L3 — VCS Service      : view vcsService
+ *  L3 — Analysis         : view analysisServices
+ *  L3 — Git Analytics    : view gitAnalytics
+ *  L3 — Scoring & Risks  : view scoringRisks
+ *  L3 — REST API         : view apiLayer
+ *  L3 — Data Model       : view dataModel
+ */
+
+specification {
+
+  element actor {
+    style {
+      shape person
+      color green
+    }
+  }
+
+  element externalSystem {
+    style {
+      color secondary
+      shape storage
+    }
+  }
+
+  element system {
+    style {
+      color blue
+    }
+  }
+
+  element container {
+    style {
+      color sky
+    }
+  }
+
+  element component {
+    style {
+      color slate
+    }
+  }
+
+  element store {
+    style {
+      shape cylinder
+      color amber
+    }
+  }
+
+  relationship triggers {
+    color amber
+    line dashed
+  }
+
+  relationship persists {
+    color gray
+    line dashed
+  }
+
+  relationship clones {
+    color green
+  }
+}
+
+// ─────────────────────────────────────────────
+// MODEL
+// ─────────────────────────────────────────────
+
+model {
+
+  // ── External Actors ──────────────────────────
+
+  actor apiClient 'API Client' {
+    description 'Developer, CI/CD pipeline, or integration tool
+    consuming the CodeRadar REST API'
+  }
+
+  // ── External Systems ─────────────────────────
+
+  externalSystem bitbucket 'Bitbucket' {
+    description 'Atlassian Git hosting.
+    Auth: App Password (username + token).'
+  }
+
+  externalSystem gitlab 'GitLab' {
+    description 'GitLab Git hosting and CI/CD platform.
+    Auth: Personal Access Token (oauth2 scheme).'
+  }
+
+  externalSystem localFs 'Local Filesystem' {
+    description 'Local Git repository for demo/offline scanning
+    via scripts/local_scan.py'
+    style { shape browser }
+  }
+
+  // ── CodeRadar System ─────────────────────────
+
+  system coderadar 'CodeRadar' {
+    description 'Technical profiling service for Git repositories.
+    Detects tech stack, measures quality, analyses git history,
+    computes scores and risks. API-first, SQLite-backed.'
+
+    // ── REST API ────────────────────────────────
+
+    container api 'REST API' {
+      technology 'FastAPI · Python 3.12 · Uvicorn'
+      description 'HTTP entry point. Routes requests to services,
+      triggers scans as background tasks, serves analysis results.'
+
+      component healthRouter 'Health' {
+        technology 'FastAPI APIRouter'
+        description 'GET /health — liveness check'
+      }
+
+      component projectsRouter 'Projects Router' {
+        technology 'FastAPI APIRouter'
+        description 'POST /api/v1/projects
+        GET  /api/v1/projects
+        GET  /api/v1/projects/{id}
+        GET  /api/v1/projects/{id}/repositories
+        GET  /api/v1/projects/{id}/developers'
+      }
+
+      component reposRouter 'Repositories Router' {
+        technology 'FastAPI APIRouter'
+        description 'POST /api/v1/repositories
+        GET  /api/v1/repositories/{id}
+        POST /api/v1/repositories/{id}/scan  → 202 Accepted
+        GET  /api/v1/repositories/{id}/scans
+        GET  /api/v1/repositories/{id}/modules'
+      }
+
+      component scansRouter 'Scans Router' {
+        technology 'FastAPI APIRouter'
+        description 'GET /api/v1/scans/{id}
+        GET /api/v1/scans/{id}/summary
+        GET /api/v1/scans/{id}/languages
+        GET /api/v1/scans/{id}/dependencies
+        GET /api/v1/scans/{id}/scores
+        GET /api/v1/scans/{id}/risks
+        GET /api/v1/scans/{id}/developers
+        GET /api/v1/scans/{id}/compare?with={id2}'
+      }
+
+      component devsRouter 'Developers Router' {
+        technology 'FastAPI APIRouter'
+        description 'GET  /api/v1/developers/{id}
+        GET  /api/v1/developers/{id}/languages?scan_id=X
+        GET  /api/v1/developers/{id}/modules?scan_id=X
+        POST /api/v1/developers/identity-overrides'
+      }
+
+      component modulesRouter 'Modules Router' {
+        technology 'FastAPI APIRouter'
+        description 'GET /api/v1/modules/{id}/ownership'
+      }
+    }
+
+    // ── Scan Orchestrator ───────────────────────
+
+    container scanOrchestrator 'Scan Orchestrator' {
+      technology 'Python · FastAPI BackgroundTasks'
+      description '7-stage pipeline that coordinates all analysis services.
+      Runs asynchronously; scan.status transitions:
+      pending → running → completed | failed.
+      Each stage persists partial results independently.'
+
+      style { color amber }
+
+      component stage1 'Stage 1 · Prepare Repository' {
+        description 'Clone or fetch via VCS provider.
+        Writes scan.commit_sha and scan.clone_path.'
+      }
+      component stage2 'Stage 2 · File Analysis' {
+        description 'Traverse file tree, detect languages, count LOC.
+        Stores total_files, total_loc, large_files_count, etc.'
+      }
+      component stage3 'Stage 3 · Stack Detection' {
+        description 'Detect project_type (backend_service, frontend_application,
+        library, monorepo, …), frameworks, CI/CD, package managers,
+        infrastructure tools (Docker, K8s, Terraform).'
+      }
+      component stage4 'Stage 4 · Complexity Analysis' {
+        description 'Flag files ≥ 500 LOC and functions ≥ 50 LOC.
+        Approximate fan-out via import count.'
+      }
+      component stage5 'Stage 5 · Git Analytics' {
+        description 'Parse git log --numstat. Normalise identities.
+        Aggregate per-developer stats, language breakdown,
+        module contribution percentages.'
+      }
+      component stage6 'Stage 6 · Scoring & Risks' {
+        description 'Compute 5-domain quality scorecard + overall score.
+        Detect 12 risk types with severity classification.'
+      }
+      component stage7 'Stage 7 · Complete' {
+        description 'Set scan.status = completed.
+        On failure: status = failed + error_message.'
+      }
+    }
+
+    // ── VCS Service ─────────────────────────────
+
+    container vcsService 'VCS Service' {
+      technology 'Python · GitPython'
+      description 'Abstracts clone/fetch operations for different
+      Git hosting providers. Manages a local repository cache.'
+
+      style { color green }
+
+      component baseProvider 'Base VCS Provider' {
+        technology 'Abstract Class'
+        description 'build_clone_url(), clone(), fetch(), detect_provider().
+        Full history clone (depth=0).'
+      }
+      component bitbucketProvider 'Bitbucket Provider' {
+        technology 'Python'
+        description 'Injects username:token into HTTPS clone URL.
+        https://user:password@bitbucket.org/workspace/repo.git'
+      }
+      component gitlabProvider 'GitLab Provider' {
+        technology 'Python'
+        description 'Uses oauth2:token authentication scheme.
+        https://oauth2:token@gitlab.com/group/repo.git'
+      }
+      component workspaceManager 'Workspace Manager' {
+        technology 'Python'
+        description 'Maintains per-repository local clone cache
+        in repos_cache_dir. Decides clone vs. fetch on each scan.'
+      }
+    }
+
+    // ── Analysis Services ───────────────────────
+
+    container analysisServices 'Analysis Services' {
+      technology 'Python'
+      description 'Static code analysis: language detection,
+      stack profiling, dependency parsing, complexity metrics.'
+
+      style { color sky }
+
+      component fileAnalyzer 'File Analyzer' {
+        technology 'Python'
+        description '40+ extension → language mappings.
+        File classification: source / test / config / lockfile / doc.
+        LOC counting. Large file detection (≥ 500 LOC).'
+      }
+      component stackDetector 'Stack Detector' {
+        technology 'Python'
+        description 'Project type heuristics. Framework detection
+        (React, Django, FastAPI, Spring Boot, …).
+        CI/CD detection (Bitbucket Pipelines, GitLab CI, GitHub Actions, Jenkins).
+        Infra tools: Docker, Kubernetes, Terraform, Helm.'
+      }
+      component depParser 'Dependency Parser' {
+        technology 'Python · tomllib'
+        description 'Parsers for:
+        package.json (npm/yarn/pnpm)
+        requirements.txt / requirements-dev.txt
+        pyproject.toml (Poetry / PEP 621)
+        go.mod · Cargo.toml · pom.xml · Gemfile
+        Classifies deps: prod / dev / test / unknown.'
+      }
+      component complexityAnalyzer 'Complexity Analyzer' {
+        technology 'Python · regex'
+        description 'Regex-based function detection per language.
+        Counts functions > 50 LOC.
+        Collects imports for fan-out approximation.'
+      }
+    }
+
+    // ── Git Analytics ───────────────────────────
+
+    container gitAnalytics 'Git Analytics' {
+      technology 'Python · git CLI'
+      description 'Parses full git history and aggregates
+      per-developer contribution statistics.'
+
+      style { color indigo }
+
+      component gitParser 'Git Log Parser' {
+        technology 'Python'
+        description 'Runs git log --format --numstat.
+        Extracts: SHA, author name/email, timestamp,
+        insertions, deletions, file paths (handles renames).'
+      }
+      component contributorAggregator 'Contributor Aggregator' {
+        technology 'Python'
+        description 'Groups commits by canonical username.
+        Computes: commit_count, insertions, deletions,
+        files_changed, active_days, first/last commit.
+        Breakdown by language and by module (top-level dir).'
+      }
+      component identityNormalizer 'Identity Normalizer' {
+        technology 'Python · unicodedata'
+        description 'Priority chain: manual override → email hint → name parsing.
+        Cyrillic → Latin transliteration.
+        Format: first_initial + "_" + last_name (e.g. d_ivanov).
+        Confidence: 1.0 (override) / 0.9 (email) / 0.85 (name) / 0.7 (ambiguous).'
+      }
+    }
+
+    // ── Scoring & Risks ─────────────────────────
+
+    container scoringRisks 'Scoring & Risks' {
+      technology 'Python'
+      description 'Rule-based quality measurement and risk detection.
+      Deterministic, no ML.'
+
+      style { color red }
+
+      component scoringEngine 'Scoring Engine' {
+        technology 'Python'
+        description '5 domains scored 0–100:
+        · Code Quality     (25%) — large files/functions, linters
+        · Test Quality     (20%) — test ratio
+        · Doc Quality      (15%) — README, changelog, runbook
+        · Delivery Quality (20%) — CI/CD, Docker, IaC
+        · Maintainability  (20%) — bus factor, complexity
+        Overall = weighted average.'
+      }
+      component riskEngine 'Risk Detection Engine' {
+        technology 'Python'
+        description '12 risk types with severity (low/medium/high/critical):
+        no_tests · weak_documentation · no_ci_pipeline · no_lockfile
+        oversized_file · oversized_function
+        knowledge_concentration · low_bus_factor
+        mono_owner_language · mono_owner_module
+        high_complexity_module · orphan_module'
+      }
+    }
+
+    // ── Database ────────────────────────────────
+
+    store database 'Database' {
+      technology 'SQLite · SQLAlchemy 2 · Alembic'
+      description '15 ORM tables. WAL mode enabled.
+      Foreign keys enforced. PostgreSQL-ready.
+
+      Project → Repository → Scan
+      Scan → ScanLanguage, ScanScore, ScanRisk, Dependency
+      Scan → DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution
+      Project → Developer → DeveloperIdentity, IdentityOverride
+      Repository → Module'
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // RELATIONSHIPS
+  // ─────────────────────────────────────────────
+
+  // L1 — external
+  apiClient -> coderadar 'REST API calls (HTTP/JSON)'
+
+  coderadar.vcsService -[clones]-> bitbucket 'git clone / git fetch'
+  coderadar.vcsService -[clones]-> gitlab    'git clone / git fetch'
+  coderadar.vcsService -[clones]-> localFs   'reads local repo'
+
+  // L2 — containers
+  coderadar.api -[triggers]-> coderadar.scanOrchestrator 'trigger scan (BackgroundTask · 202 Accepted)'
+  coderadar.api -> coderadar.database 'read analysis results'
+
+  coderadar.scanOrchestrator -> coderadar.vcsService         'Stage 1: clone / fetch repo'
+  coderadar.scanOrchestrator -> coderadar.analysisServices   'Stage 2-4: file / stack / complexity'
+  coderadar.scanOrchestrator -> coderadar.gitAnalytics       'Stage 5: git log parsing'
+  coderadar.scanOrchestrator -> coderadar.scoringRisks       'Stage 6: scoring + risk detection'
+  coderadar.scanOrchestrator -[persists]-> coderadar.database 'persist scan results'
+
+  // L3 — VCS internal
+  coderadar.vcsService.workspaceManager -> coderadar.vcsService.bitbucketProvider 'delegates'
+  coderadar.vcsService.workspaceManager -> coderadar.vcsService.gitlabProvider    'delegates'
+  coderadar.vcsService.bitbucketProvider -> coderadar.vcsService.baseProvider     'extends'
+  coderadar.vcsService.gitlabProvider    -> coderadar.vcsService.baseProvider     'extends'
+
+  // L3 — Git analytics internal
+  coderadar.gitAnalytics.contributorAggregator -> coderadar.gitAnalytics.gitParser          'consumes commits'
+  coderadar.gitAnalytics.contributorAggregator -> coderadar.gitAnalytics.identityNormalizer 'normalises identities'
+
+  // L3 — Scan pipeline stage order (informational)
+  coderadar.scanOrchestrator.stage1 -> coderadar.scanOrchestrator.stage2 'then'
+  coderadar.scanOrchestrator.stage2 -> coderadar.scanOrchestrator.stage3 'then'
+  coderadar.scanOrchestrator.stage3 -> coderadar.scanOrchestrator.stage4 'then'
+  coderadar.scanOrchestrator.stage4 -> coderadar.scanOrchestrator.stage5 'then'
+  coderadar.scanOrchestrator.stage5 -> coderadar.scanOrchestrator.stage6 'then'
+  coderadar.scanOrchestrator.stage6 -> coderadar.scanOrchestrator.stage7 'then'
+}
+
+// ─────────────────────────────────────────────
+// VIEWS
+// ─────────────────────────────────────────────
+
+views {
+
+  // ── L1: System Context ──────────────────────
+
+  view index {
+    title 'CodeRadar — System Context (L1)'
+    description 'Who uses CodeRadar and which external systems it integrates with.'
+
+    include *
+
+    style apiClient {
+      color green
+    }
+    style bitbucket, gitlab, localFs {
+      color secondary
+    }
+    style coderadar {
+      color blue
+    }
+  }
+
+  // ── L2: Containers ──────────────────────────
+
+  view containers of coderadar {
+    title 'CodeRadar — Containers (L2)'
+    description 'Internal containers and their responsibilities.
+    Each container is independently deployable in principle.'
+
+    include *
+    include apiClient
+    include bitbucket, gitlab, localFs
+
+    style apiClient { color green }
+    style bitbucket, gitlab, localFs { color secondary }
+  }
+
+  // ── L3: Scan Pipeline ───────────────────────
+
+  view scanPipeline of coderadar.scanOrchestrator {
+    title 'Scan Pipeline — 7-Stage Orchestration (L3)'
+    description 'Sequential 7-stage pipeline. Each stage persists partial
+    results independently. On failure: scan.status = failed.'
+
+    include *
+    include coderadar.vcsService
+    include coderadar.analysisServices
+    include coderadar.gitAnalytics
+    include coderadar.scoringRisks
+    include coderadar.database
+  }
+
+  // ── L3: VCS Service ─────────────────────────
+
+  view vcsService of coderadar.vcsService {
+    title 'VCS Service — Components (L3)'
+    description 'Provider abstraction for Bitbucket and GitLab.
+    Manages local repository cache with clone-vs-fetch strategy.'
+
+    include *
+    include bitbucket, gitlab, localFs
+  }
+
+  // ── L3: Analysis Services ───────────────────
+
+  view analysisServices of coderadar.analysisServices {
+    title 'Analysis Services — Components (L3)'
+    description 'Static analysis: language stats, stack fingerprint,
+    dependency graph, and complexity metrics.'
+
+    include *
+  }
+
+  // ── L3: Git Analytics ───────────────────────
+
+  view gitAnalytics of coderadar.gitAnalytics {
+    title 'Git Analytics — Components (L3)'
+    description 'Full git history parsing → developer identity normalisation
+    → contribution aggregation by language and module.'
+
+    include *
+  }
+
+  // ── L3: Scoring & Risks ─────────────────────
+
+  view scoringRisks of coderadar.scoringRisks {
+    title 'Scoring & Risks — Components (L3)'
+    description 'Rule-based scoring across 5 quality domains.
+    12 risk detectors covering code health, team dynamics, and delivery.'
+
+    include *
+  }
+
+  // ── L3: REST API ────────────────────────────
+
+  view apiLayer of coderadar.api {
+    title 'REST API — Routers (L3)'
+    description 'FastAPI routing layer. Five APIRouter groups
+    covering projects, repositories, scans, developers, and modules.'
+
+    include *
+    include apiClient
+  }
+
+  // ── L3: Data Model ──────────────────────────
+
+  view dataModel {
+    title 'Data Model — Key Entities (L3)'
+    description 'Core ORM entities and their relationships.
+    15 SQLAlchemy tables in SQLite (PostgreSQL-ready).'
+
+    include coderadar.database
+    include coderadar.api
+    include coderadar.scanOrchestrator
+  }
+}
