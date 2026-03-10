@@ -364,6 +364,9 @@
       <div class="sidebar-item active" id="nav-projects" onclick="navigate('projects')">
         <span class="icon">📁</span> Projects
       </div>
+      <div class="sidebar-item" id="nav-developers-list" onclick="navigate('developers')">
+        <span class="icon">👥</span> Developers
+      </div>
     </div>
     <div class="sidebar-section" id="sidebar-repo-section" style="display:none">
       <div class="sidebar-label">Repository</div>
@@ -399,7 +402,7 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 const API = '/api/v1';
-let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
 
 // Language color palette
 const LANG_COLORS = [
@@ -421,9 +424,15 @@ function pathToState(pathname) {
   };
 
   if (segments.length === 0 || (segments.length === 1 && segments[0] === 'projects')) {
-    return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+    return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
   }
-  if (segments[0] !== 'projects' || segments.length < 2) return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+  if (segments[0] === 'developers') {
+    if (segments.length === 1) return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+    const devId = parseInt(segments[1], 10);
+    if (segments.length === 2 && !isNaN(devId)) return { view: 'developer', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: devId, projectFilter: null };
+    return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+  }
+  if (segments[0] !== 'projects' || segments.length < 2) return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
 
   const projectId = parseInt(segments[1], 10);
   if (isNaN(projectId) || segments.length === 2) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
@@ -441,6 +450,8 @@ function pathToState(pathname) {
 
 function stateToPath(s) {
   if (s.view === 'projects') return UI_BASE + '/projects';
+  if (s.view === 'developers') return UI_BASE + '/developers';
+  if (s.view === 'developer' && s.developerId != null) return `${UI_BASE}/developers/${s.developerId}`;
   if (s.view === 'repos' && s.projectId != null) return `${UI_BASE}/projects/${s.projectId}/repos`;
   if (s.view === 'scans' && s.projectId != null && s.repoId != null) return `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans`;
   if (s.view === 'scan' && s.projectId != null && s.repoId != null && s.scanId != null) {
@@ -511,18 +522,24 @@ function updateNav() {
   if (state.view !== 'projects') {
     parts.push(`<a onclick="navigate('projects')">Projects</a>`);
   }
+  if (state.view === 'developers') parts.push('<span class="sep">/</span><span>Developers</span>');
+  if (state.view === 'developer' && state.developerId != null) {
+    parts.push('<span class="sep">/</span><a onclick="navigate(\'developers\')">Developers</a>');
+    parts.push('<span class="sep">/</span><span>Profile</span>');
+  }
 
   const showRepoSection = ['scans', 'scan'].includes(state.view);
   document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
   document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
 
   // Active nav items
-  ['projects','scans','summary','languages','scores','risks','developers'].forEach(id => {
+  ['projects','developers-list','scans','summary','languages','scores','risks','developers'].forEach(id => {
     const el = document.getElementById('nav-' + id);
     if (el) el.classList.toggle('active', false);
   });
 
   if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
+  if (state.view === 'developers' || state.view === 'developer') document.getElementById('nav-developers-list').classList.add('active');
   if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
   if (state.view === 'scan') {
     const el = document.getElementById('nav-' + state.tab);
@@ -541,6 +558,8 @@ async function render() {
     else if (state.view === 'repos')  await renderRepos();
     else if (state.view === 'scans')  await renderScans();
     else if (state.view === 'scan')   await renderScanDetail();
+    else if (state.view === 'developers') await renderDevelopersSummary();
+    else if (state.view === 'developer') await renderDeveloperProfile();
   } catch (e) { showError(e); }
 }
 
@@ -575,7 +594,7 @@ async function renderProjects() {
 async function renderRepos() {
   const [project, allRepos] = await Promise.all([
     api('/projects/' + state.projectId),
-    api('/projects/' + state.projectId + '/repositories'),
+    api('/projects/' + state.projectId + '/repositories/with-latest-scan'),
   ]);
 
   let html = `
@@ -586,22 +605,37 @@ async function renderRepos() {
   if (!allRepos.length) {
     html += `<div class="empty"><div class="icon">📦</div><p>No repositories. Add one via the API or create a scan with local_scan.py.</p></div>`;
   } else {
-    html += '<div class="card-grid">';
-    for (const r of allRepos) {
-      html += `
-        <div class="card" onclick="navigate('scans', {projectId: ${state.projectId}, repoId: ${r.id}})">
-          <div class="card-title">${esc(r.name)}</div>
-          <div class="card-meta">
-            ${esc(r.provider_type)} · ${esc(r.default_branch || 'main')}
-            ${r.last_commit_sha ? '<br><span style="font-family:monospace;font-size:11px">' + esc(r.last_commit_sha.slice(0,8)) + '</span>' : ''}
-          </div>
-          <div class="card-footer">
-            <span class="tag">${esc(r.provider_type)}</span>
-            <span class="tag accent">View scans →</span>
-          </div>
-        </div>`;
-    }
-    html += '</div>';
+    const rows = allRepos.map(r => {
+      const ls = r.latest_scan;
+      const lastUpdated = ls && (ls.completed_at || ls.started_at);
+      const score = ls && ls.overall_score != null ? ls.overall_score : null;
+      const scoreCls = score != null ? scoreClass(score) : '';
+      return `<tr style="cursor:pointer" onclick="navigate('scans', {projectId: ${state.projectId}, repoId: ${r.id}})">
+        <td>
+          <div style="font-weight:600">${esc(r.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${esc(r.provider_type)}${r.default_branch ? ' · ' + esc(r.default_branch) : ''}</div>
+        </td>
+        <td>${ls && ls.total_loc != null ? fmt(ls.total_loc) : '—'}</td>
+        <td>${ls && ls.total_files != null ? fmt(ls.total_files) : '—'}</td>
+        <td style="text-transform:capitalize">${ls && ls.project_type ? esc(String(ls.project_type).replace(/_/g, ' ')) : '—'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${fmtDate(lastUpdated)}</td>
+        <td>${ls && ls.primary_language ? esc(ls.primary_language) : '—'}</td>
+        <td>${score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${score}%"></div></div><span class="score-num">${score.toFixed(0)}</span></div>` : '—'}</td>
+      </tr>`;
+    }).join('');
+    html += `
+    <table>
+      <thead><tr>
+        <th>Repository</th>
+        <th>Lines of code</th>
+        <th>Files</th>
+        <th>Project type</th>
+        <th>Last updated</th>
+        <th>Primary language</th>
+        <th>Score</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
   }
   setMain(html);
 }
@@ -850,7 +884,7 @@ async function buildDevelopersTab() {
 
   const total = devs.reduce((s, d) => s + d.commit_count, 0);
 
-  let rows = devs.map((d, i) => {
+  const rows = devs.map((d) => {
     const share = total > 0 ? (d.commit_count / total * 100).toFixed(1) : 0;
     return `<tr>
       <td>
@@ -869,18 +903,211 @@ async function buildDevelopersTab() {
       <td>${fmt(d.files_changed)}</td>
       <td>${fmt(d.active_days)} days</td>
       <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
+      <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer.id} })">Profile →</button></td>
     </tr>`;
   }).join('');
 
   return `
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scan-only view. <a href="#" onclick="navigate('developers'); return false;" style="color:var(--accent-hover)">View all developers across projects →</a></p>
     <table>
       <thead><tr>
         <th>Developer</th><th>Commits</th><th>Share</th>
         <th>Insertions</th><th>Deletions</th><th>Files</th>
-        <th>Active days</th><th>Last commit</th>
+        <th>Active days</th><th>Last commit</th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// ── Developers summary (global) ───────────────────────────────────────────
+async function renderDevelopersSummary() {
+  const projectIdParam = state.projectFilter != null ? '?project_id=' + state.projectFilter : '';
+  const [devs, projects] = await Promise.all([
+    api('/developers' + projectIdParam),
+    api('/projects'),
+  ]);
+
+  const totalCommits = devs.reduce((s, d) => s + d.total_commits, 0);
+  const topOne = devs.length ? devs[0] : null;
+
+  let filterHtml = '';
+  if (projects.length) {
+    filterHtml = `
+      <label style="font-size:12px;color:var(--text-muted);margin-right:8px">Project:</label>
+      <select id="dev-project-filter" onchange="state.projectFilter=this.value?parseInt(this.value,10):null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+        <option value="">All projects</option>
+        ${projects.map(p => `<option value="${p.id}" ${state.projectFilter === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+      </select>`;
+  }
+
+  const statsRow = `
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-label">Developers</div>
+        <div class="stat-value">${devs.length}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total commits</div>
+        <div class="stat-value">${fmt(totalCommits)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Top contributor</div>
+        <div class="stat-value" style="font-size:14px">${topOne ? esc(topOne.canonical_username) : '—'}</div>
+        <div class="stat-sub">${topOne && topOne.project_name ? esc(topOne.project_name) : ''}</div>
+      </div>
+      <div class="stat-box" style="align-self:flex-end">${filterHtml}</div>
+    </div>`;
+
+  let barHtml = '';
+  if (devs.length && totalCommits > 0) {
+    const segments = devs.slice(0, 20).map((d, i) => {
+      const pct = (d.total_commits / totalCommits * 100).toFixed(2);
+      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}" title="${esc(d.canonical_username)} ${pct}%"></div>`;
+    }).join('');
+    barHtml = `<div class="section-title" style="margin-bottom:8px">Commit share</div><div class="lang-bar">${segments}</div>`;
+  }
+
+  let tableRows = '';
+  if (devs.length) {
+    tableRows = devs.map(d => {
+      const share = totalCommits > 0 ? (d.total_commits / totalCommits * 100).toFixed(1) : 0;
+      return `<tr style="cursor:pointer" onclick="navigate('developer', { developerId: ${d.id} })">
+        <td>
+          <div style="font-weight:600">${esc(d.canonical_username)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${esc(d.primary_email || '')}</div>
+        </td>
+        <td><span class="tag">${esc(d.project_name || '')}</span></td>
+        <td>${fmt(d.total_commits)}</td>
+        <td>
+          <div class="score-bar-wrap">
+            <div class="score-bar"><div class="score-fill high" style="width:${Math.min(share, 100)}%"></div></div>
+            <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+          </div>
+        </td>
+        <td>${fmt(d.total_insertions)}</td>
+        <td>${fmt(d.total_deletions)}</td>
+        <td>${fmt(d.files_changed)}</td>
+        <td>${fmt(d.active_days)}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const tableHtml = devs.length ? `
+    <table>
+      <thead><tr>
+        <th>Developer</th><th>Project</th><th>Commits</th><th>Share</th>
+        <th>Insertions</th><th>Deletions</th><th>Files</th><th>Active days</th><th>Last commit</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>` : `<div class="empty"><div class="icon">👥</div><p>No developers yet. Run scans on repositories to see contributors.</p></div>`;
+
+  setMain(`
+    <div class="page-title">Developers</div>
+    <div class="page-subtitle">All developers across projects and repositories · aggregated by scan</div>
+    ${statsRow}
+    ${barHtml ? '<div style="margin-bottom:24px">' + barHtml + '</div>' : ''}
+    ${tableHtml}
+  `);
+}
+
+// ── Developer profile ─────────────────────────────────────────────────────
+async function renderDeveloperProfile() {
+  const [dev, contributions, languages, modules] = await Promise.all([
+    api('/developers/' + state.developerId),
+    api('/developers/' + state.developerId + '/contributions'),
+    api('/developers/' + state.developerId + '/languages'),
+    api('/developers/' + state.developerId + '/modules'),
+  ]);
+
+  const statsRow = `
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-label">Commits</div>
+        <div class="stat-value">${fmt(contributions.commit_count)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Insertions</div>
+        <div class="stat-value">${fmt(contributions.insertions)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Deletions</div>
+        <div class="stat-value">${fmt(contributions.deletions)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Files changed</div>
+        <div class="stat-value">${fmt(contributions.files_changed)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Active days</div>
+        <div class="stat-value">${contributions.active_days}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Share in project</div>
+        <div class="stat-value">${contributions.share_pct != null ? contributions.share_pct.toFixed(1) + '%' : '—'}</div>
+        <div class="stat-sub">${contributions.project_total_commits != null ? 'of ' + fmt(contributions.project_total_commits) + ' commits' : ''}</div>
+      </div>
+    </div>`;
+
+  let langsHtml = '';
+  if (languages.length) {
+    const totalLoc = languages.reduce((s, l) => s + (l.loc_added || 0), 0);
+    const segments = languages.map((l, i) => {
+      const pct = totalLoc > 0 ? (l.loc_added / totalLoc * 100).toFixed(2) : 0;
+      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`;
+    }).join('');
+    const rows = languages.map(l => `<tr>
+      <td>${esc(l.language)}</td>
+      <td>${fmt(l.commit_count)}</td>
+      <td>${fmt(l.files_changed)}</td>
+      <td>${fmt(l.loc_added)}</td>
+      <td><div class="score-bar-wrap"><div class="score-bar"><div class="score-fill high" style="width:${l.percentage}%"></div></div><span class="score-num">${l.percentage.toFixed(1)}%</span></div></td>
+    </tr>`).join('');
+    langsHtml = `
+      <div class="section-header"><div class="section-title">By language</div></div>
+      <div class="lang-bar" style="margin-bottom:12px">${segments}</div>
+      <table>
+        <thead><tr><th>Language</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  let modsHtml = '';
+  if (modules.length) {
+    const rows = modules.map(m => `<tr>
+      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
+      <td>${esc(m.module_name)}</td>
+      <td>${fmt(m.commit_count)}</td>
+      <td>${fmt(m.files_changed)}</td>
+      <td>${fmt(m.loc_added)}</td>
+      <td>${m.percentage.toFixed(1)}%</td>
+    </tr>`).join('');
+    modsHtml = `
+      <div class="section-header"><div class="section-title">By module</div></div>
+      <table>
+        <thead><tr><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  setMain(`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div>
+        <div class="page-title">${esc(dev.display_name || dev.canonical_username)}</div>
+        <div class="page-subtitle">
+          ${esc(dev.canonical_username)}${dev.primary_email ? ' · ' + esc(dev.primary_email) : ''}
+          ${dev.project_name ? '<br><span class="tag">' + esc(dev.project_name) + '</span>' : ''}
+        </div>
+      </div>
+      <button class="btn btn-outline" onclick="navigate('developers')">← Back to developers</button>
+    </div>
+    <div style="margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+      First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
+    </div>
+    ${statsRow}
+    ${langsHtml}
+    ${modsHtml ? '<div style="margin-top:28px">' + modsHtml + '</div>' : ''}
+  `);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
