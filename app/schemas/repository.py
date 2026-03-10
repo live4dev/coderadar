@@ -8,7 +8,7 @@ class RepositoryCreate(BaseModel):
     name: str
     url: str
     provider_type: str  # "bitbucket" | "gitlab"
-    default_branch: str = "main"
+    default_branch: str | None = None
     credentials_username: str | None = None
     credentials_token: str | None = None
 
@@ -19,7 +19,7 @@ class RepositoryOut(BaseModel):
     name: str
     url: str
     provider_type: str
-    default_branch: str
+    default_branch: str | None
     last_commit_sha: str | None
     created_at: datetime
 

@@ -56,10 +56,10 @@ def trigger_scan(
         raise HTTPException(404, "Repository not found")
 
     branch = body.branch or repo.default_branch
-
+    # Store "" when branch is None so we use remote default; orchestrator fills scan.branch after clone
     scan = Scan(
         repository_id=repo.id,
-        branch=branch,
+        branch=branch or "",
         status=ScanStatus.pending,
     )
     db.add(scan)

@@ -43,11 +43,12 @@ def run_scan(scan_id: int, db: Session) -> None:
 
     try:
         # ── Stage 1: prepare repo ──────────────────────────────────────────
+        branch_arg = scan.branch or None  # empty string means "use remote default"
         clone_result = workspace.prepare(
             repository_id=repo.id,
             repo_url=repo.url,
             provider_type=repo.provider_type.value,
-            branch=scan.branch,
+            branch=branch_arg,
             credentials_username=repo.credentials_username or "",
             credentials_token=repo.credentials_token or "",
         )
@@ -55,6 +56,8 @@ def run_scan(scan_id: int, db: Session) -> None:
         scan.commit_sha = clone_result.commit_sha
         repo.clone_path = str(repo_path)
         repo.last_commit_sha = clone_result.commit_sha
+        if not scan.branch:
+            scan.branch = clone_result.branch
         db.commit()
         logger.info("repo_prepared", commit_sha=scan.commit_sha)
 

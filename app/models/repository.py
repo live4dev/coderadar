@@ -29,7 +29,7 @@ class Repository(Base):
     provider_type: Mapped[ProviderType] = mapped_column(
         Enum(ProviderType), nullable=False
     )
-    default_branch: Mapped[str] = mapped_column(String(255), default="main")
+    default_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     clone_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
 

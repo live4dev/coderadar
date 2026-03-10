@@ -42,19 +42,20 @@ class RepoWorkspaceManager:
         repository_id: int,
         repo_url: str,
         provider_type: str,
-        branch: str,
+        branch: str | None = None,
         credentials_username: str = "",
         credentials_token: str = "",
     ) -> CloneResult:
-        """Clone or fetch the repository. Returns CloneResult with local path and HEAD SHA."""
+        """Clone or fetch the repository. Returns CloneResult with local path and HEAD SHA.
+        If branch is None, clone uses remote default (HEAD); fetch uses current branch."""
         provider = get_provider(provider_type, credentials_username, credentials_token)
         target = self._repo_dir(repository_id)
 
         if target.exists() and (target / ".git").exists():
-            logger.info("fetching_repo", repository_id=repository_id, branch=branch)
+            logger.info("fetching_repo", repository_id=repository_id, branch=branch or "(default)")
             return provider.fetch(target, branch)
 
-        logger.info("cloning_repo", repository_id=repository_id, url=repo_url, branch=branch)
+        logger.info("cloning_repo", repository_id=repository_id, url=repo_url, branch=branch or "(default)")
         target.mkdir(parents=True, exist_ok=True)
         return provider.clone(repo_url, target, branch)
 

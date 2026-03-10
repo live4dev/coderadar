@@ -408,13 +408,57 @@ const LANG_COLORS = [
 ];
 
 // ── Router ────────────────────────────────────────────────────────────────
+const UI_BASE = '/ui';
+const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers'];
+
+function pathToState(pathname) {
+  const raw = pathname.replace(/^\/ui\/?/, '').replace(/\/$/, '');
+  const segments = raw ? raw.split('/').filter(Boolean) : [];
+  const tabFromQuery = () => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get('tab');
+    return t && VALID_TABS.includes(t) ? t : 'summary';
+  };
+
+  if (segments.length === 0 || (segments.length === 1 && segments[0] === 'projects')) {
+    return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+  }
+  if (segments[0] !== 'projects' || segments.length < 2) return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary' };
+
+  const projectId = parseInt(segments[1], 10);
+  if (isNaN(projectId) || segments.length === 2) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
+  if (segments[2] !== 'repos' || segments.length < 4) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
+
+  const repoId = parseInt(segments[3], 10);
+  if (isNaN(repoId) || segments.length === 4) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+  if (segments[4] !== 'scans' || segments.length < 6) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+
+  const scanId = parseInt(segments[5], 10);
+  if (isNaN(scanId)) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+  const tab = segments[6] && VALID_TABS.includes(segments[6]) ? segments[6] : tabFromQuery();
+  return { view: 'scan', projectId, repoId, scanId, tab };
+}
+
+function stateToPath(s) {
+  if (s.view === 'projects') return UI_BASE + '/projects';
+  if (s.view === 'repos' && s.projectId != null) return `${UI_BASE}/projects/${s.projectId}/repos`;
+  if (s.view === 'scans' && s.projectId != null && s.repoId != null) return `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans`;
+  if (s.view === 'scan' && s.projectId != null && s.repoId != null && s.scanId != null) {
+    const base = `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans/${s.scanId}`;
+    return (s.tab && s.tab !== 'summary') ? `${base}/${s.tab}` : base;
+  }
+  return UI_BASE + '/projects';
+}
+
 function navigate(view, ids = {}) {
   Object.assign(state, { view, ...ids });
+  history.pushState(null, '', stateToPath(state));
   render();
 }
 
 function showTab(tab) {
   state.tab = tab;
+  history.pushState(null, '', stateToPath(state));
   renderScanDetail();
 }
 
@@ -846,7 +890,16 @@ function esc(s) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
-navigate('projects');
+(function boot() {
+  const parsed = pathToState(location.pathname);
+  Object.assign(state, parsed);
+  history.replaceState(null, '', stateToPath(state));
+  render();
+})();
+window.addEventListener('popstate', function () {
+  Object.assign(state, pathToState(location.pathname));
+  render();
+});
 </script>
 </body>
 </html>

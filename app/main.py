@@ -45,6 +45,11 @@ def ui():
     return FileResponse(_STATIC_DIR / "index.html")
 
 
+@app.get("/ui/{path:path}", include_in_schema=False)
+def ui_catch_all(path: str):
+    return FileResponse(_STATIC_DIR / "index.html")
+
+
 @app.get("/", include_in_schema=False)
 def root():
     return RedirectResponse("/ui")
