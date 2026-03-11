@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session, joinedload
@@ -8,7 +10,7 @@ from app.models import (
     Repository, Scan, ScanScore, ScanStatus,
 )
 from app.models.scan_score import ScoreDomain
-from app.schemas.project import ProjectCreate, ProjectOut
+from app.schemas.project import ProjectCreate, ProjectOut, ProjectSummaryOut
 from app.schemas.developer import DeveloperOut, DeveloperProfileOut
 from app.schemas.repository import (
     RepositoryOut,
@@ -31,6 +33,111 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     return db.query(Project).order_by(Project.id).all()
+
+
+@router.get("/summary", response_model=list[ProjectSummaryOut])
+def list_projects_summary(db: Session = Depends(get_db)):
+    """List projects with aggregate metrics from latest completed scan per repository."""
+    projects = db.query(Project).order_by(Project.id).all()
+    if not projects:
+        return []
+
+    # All repos with project_id
+    repos = (
+        db.query(Repository.id, Repository.project_id)
+        .filter(Repository.project_id.in_([p.id for p in projects]))
+        .all()
+    )
+    repo_ids = [r.id for r in repos]
+    project_repo_count = {}
+    for r in repos:
+        project_repo_count[r.project_id] = project_repo_count.get(r.project_id, 0) + 1
+
+    if not repo_ids:
+        return [
+            ProjectSummaryOut(
+                id=p.id,
+                name=p.name,
+                description=p.description,
+                created_at=p.created_at,
+                repo_count=project_repo_count.get(p.id, 0),
+                repos_with_completed_scan=0,
+                total_loc=None,
+                total_files=None,
+                avg_score=None,
+                last_scan_at=None,
+            )
+            for p in projects
+        ]
+
+    # Latest completed scan per repo (first by started_at desc per repo)
+    latest_scans = (
+        db.query(Scan)
+        .filter(
+            Scan.repository_id.in_(repo_ids),
+            Scan.status == ScanStatus.completed,
+        )
+        .order_by(Scan.started_at.desc(), Scan.id.desc())
+        .all()
+    )
+    scan_by_repo = {}
+    for s in latest_scans:
+        if s.repository_id not in scan_by_repo:
+            scan_by_repo[s.repository_id] = s
+
+    # repo_id -> project_id
+    repo_to_project = {r.id: r.project_id for r in repos}
+
+    # Aggregate per project: scan stats + scan_ids for scores
+    proj_loc: dict[int, int] = {}
+    proj_files: dict[int, int] = {}
+    proj_last_at: dict[int, datetime | None] = {}
+    proj_scan_ids: dict[int, list[int]] = {}
+    for repo_id, scan in scan_by_repo.items():
+        pid = repo_to_project[repo_id]
+        proj_loc[pid] = proj_loc.get(pid, 0) + (scan.total_loc or 0)
+        proj_files[pid] = proj_files.get(pid, 0) + (scan.total_files or 0)
+        if scan.completed_at:
+            current = proj_last_at.get(pid)
+            if current is None or scan.completed_at > current:
+                proj_last_at[pid] = scan.completed_at
+        proj_scan_ids.setdefault(pid, []).append(scan.id)
+
+    scan_ids_flat = [sid for ids in proj_scan_ids.values() for sid in ids]
+    overall_scores = {}
+    if scan_ids_flat:
+        scores = (
+            db.query(ScanScore.scan_id, ScanScore.score)
+            .filter(
+                ScanScore.scan_id.in_(scan_ids_flat),
+                ScanScore.domain == ScoreDomain.overall,
+            )
+            .all()
+        )
+        overall_scores = {row.scan_id: row.score for row in scores}
+
+    # Average score per project
+    proj_avg_score: dict[int, float] = {}
+    for pid, sids in proj_scan_ids.items():
+        vals = [overall_scores[sid] for sid in sids if overall_scores.get(sid) is not None]
+        if vals:
+            proj_avg_score[pid] = sum(vals) / len(vals)
+
+        return [
+        ProjectSummaryOut(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            created_at=p.created_at,
+            repo_count=project_repo_count.get(p.id, 0),
+            repos_with_completed_scan=len(proj_scan_ids.get(p.id, [])),
+            total_loc=proj_loc.get(p.id) if p.id in proj_scan_ids else None,
+            total_files=proj_files.get(p.id) if p.id in proj_scan_ids else None,
+            avg_score=proj_avg_score.get(p.id),
+            last_scan_at=proj_last_at.get(p.id),
+        )
+        for p in projects
+    ]
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
