@@ -7,7 +7,6 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.repository import Repository
-    from app.models.developer import Developer
 
 
 class Project(Base):
@@ -23,7 +22,4 @@ class Project(Base):
 
     repositories: Mapped[list[Repository]] = relationship(
         "Repository", back_populates="project", cascade="all, delete-orphan"
-    )
-    developers: Mapped[list[Developer]] = relationship(
-        "Developer", back_populates="project", cascade="all, delete-orphan"
     )

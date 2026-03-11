@@ -1,19 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import (
-    Developer, DeveloperContribution, DeveloperLanguageContribution,
+    Developer, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
     DeveloperModuleContribution, IdentityOverride, Language, Module, Project,
     Repository, Scan,
 )
 from app.schemas.developer import (
-    DeveloperOut, DeveloperListOut, DeveloperLanguageOut, DeveloperModuleOut,
-    DeveloperContributionsSummaryOut, IdentityOverrideCreate,
+    DeveloperOut, DeveloperListOut, DeveloperProfileOut, DeveloperLanguageOut,
+    DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
 )
 
 router = APIRouter(prefix="/developers", tags=["developers"])
+
+
+def _profile_to_out(p: DeveloperProfile) -> DeveloperProfileOut:
+    return DeveloperProfileOut(
+        id=p.id,
+        developer_id=p.developer_id,
+        canonical_username=p.canonical_username,
+        display_name=p.display_name,
+        primary_email=p.primary_email,
+    )
 
 
 @router.get("", response_model=list[DeveloperListOut])
@@ -21,40 +31,64 @@ def list_developers(
     project_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    """List all developers with aggregated stats across all their scans. Optional project_id filter."""
-    q = (
-        db.query(
-            Developer.id,
-            Developer.canonical_username,
-            Developer.display_name,
-            Developer.primary_email,
-            Developer.project_id,
-            Project.name.label("project_name"),
-            func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
-            func.coalesce(func.sum(DeveloperContribution.insertions), 0).label("total_insertions"),
-            func.coalesce(func.sum(DeveloperContribution.deletions), 0).label("total_deletions"),
-            func.coalesce(func.sum(DeveloperContribution.files_changed), 0).label("files_changed"),
-            func.coalesce(func.sum(DeveloperContribution.active_days), 0).label("active_days"),
-            func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
-            func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
-        )
-        .join(Project, Developer.project_id == Project.id)
-        .outerjoin(DeveloperContribution, Developer.id == DeveloperContribution.developer_id)
-        .group_by(Developer.id, Project.id, Project.name)
-    )
+    """List all developers with aggregated stats (across all their profiles). Optional project_id filter."""
     if project_id is not None:
-        q = q.filter(Developer.project_id == project_id)
-    # Order by total commits descending (same expression as in select)
+        q = (
+            db.query(
+                Developer.id,
+                func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
+                func.coalesce(func.sum(DeveloperContribution.insertions), 0).label("total_insertions"),
+                func.coalesce(func.sum(DeveloperContribution.deletions), 0).label("total_deletions"),
+                func.coalesce(func.sum(DeveloperContribution.files_changed), 0).label("files_changed"),
+                func.coalesce(func.sum(DeveloperContribution.active_days), 0).label("active_days"),
+                func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
+                func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
+            )
+            .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
+            .join(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
+            .join(Scan, DeveloperContribution.scan_id == Scan.id)
+            .join(Repository, Scan.repository_id == Repository.id)
+            .filter(Repository.project_id == project_id)
+            .group_by(Developer.id)
+        )
+    else:
+        q = (
+            db.query(
+                Developer.id,
+                func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
+                func.coalesce(func.sum(DeveloperContribution.insertions), 0).label("total_insertions"),
+                func.coalesce(func.sum(DeveloperContribution.deletions), 0).label("total_deletions"),
+                func.coalesce(func.sum(DeveloperContribution.files_changed), 0).label("files_changed"),
+                func.coalesce(func.sum(DeveloperContribution.active_days), 0).label("active_days"),
+                func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
+                func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
+            )
+            .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
+            .outerjoin(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
+            .group_by(Developer.id)
+        )
     total_commits_expr = func.coalesce(func.sum(DeveloperContribution.commit_count), 0)
     rows = q.order_by(total_commits_expr.desc()).all()
+
+    if not rows:
+        return []
+
+    dev_ids = [r.id for r in rows]
+    developers_with_profiles = (
+        db.query(Developer)
+        .options(joinedload(Developer.profiles))
+        .filter(Developer.id.in_(dev_ids))
+        .all()
+    )
+    dev_map = {d.id: d for d in developers_with_profiles}
+    project_name = None
+    if project_id is not None:
+        proj = db.get(Project, project_id)
+        project_name = proj.name if proj else None
+
     return [
         DeveloperListOut(
             id=r.id,
-            canonical_username=r.canonical_username,
-            display_name=r.display_name,
-            primary_email=r.primary_email,
-            project_id=r.project_id,
-            project_name=r.project_name,
             total_commits=int(r.total_commits),
             total_insertions=int(r.total_insertions),
             total_deletions=int(r.total_deletions),
@@ -62,6 +96,9 @@ def list_developers(
             active_days=int(r.active_days),
             first_commit_at=r.first_commit_at,
             last_commit_at=r.last_commit_at,
+            project_id=project_id,
+            project_name=project_name,
+            profiles=[_profile_to_out(p) for p in dev_map.get(r.id, Developer()).profiles],
         )
         for r in rows
     ]
@@ -71,7 +108,7 @@ def list_developers(
 def get_developer(developer_id: int, db: Session = Depends(get_db)):
     dev = (
         db.query(Developer)
-        .options(joinedload(Developer.project))
+        .options(joinedload(Developer.profiles))
         .filter(Developer.id == developer_id)
         .first()
     )
@@ -79,20 +116,45 @@ def get_developer(developer_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Developer not found")
     return DeveloperOut(
         id=dev.id,
-        canonical_username=dev.canonical_username,
-        display_name=dev.display_name,
-        primary_email=dev.primary_email,
-        project_id=dev.project_id,
-        project_name=dev.project.name if dev.project else None,
+        profiles=[_profile_to_out(p) for p in dev.profiles],
+        created_at=dev.created_at,
     )
 
 
-@router.get("/{developer_id}/contributions", response_model=DeveloperContributionsSummaryOut)
-def get_developer_contributions(developer_id: int, db: Session = Depends(get_db)):
-    """Aggregated contribution stats across all scans for this developer."""
+@router.get("/{developer_id}/profiles", response_model=list[DeveloperProfileOut])
+def list_developer_profiles(developer_id: int, db: Session = Depends(get_db)):
+    """List all profiles for a developer."""
     dev = db.get(Developer, developer_id)
     if not dev:
         raise HTTPException(404, "Developer not found")
+    profiles = db.query(DeveloperProfile).filter_by(developer_id=developer_id).all()
+    return [_profile_to_out(p) for p in profiles]
+
+
+@router.get("/{developer_id}/contributions", response_model=DeveloperContributionsSummaryOut)
+def get_developer_contributions(
+    developer_id: int,
+    project_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Aggregated contribution stats across all scans (and all profiles) for this developer."""
+    dev = db.get(Developer, developer_id)
+    if not dev:
+        raise HTTPException(404, "Developer not found")
+    profile_ids = [p.id for p in dev.profiles] if dev.profiles else []
+    if not profile_ids:
+        subq = db.query(DeveloperProfile.id).filter(DeveloperProfile.developer_id == developer_id)
+        profile_ids = [r[0] for r in subq.all()]
+    if not profile_ids:
+        return DeveloperContributionsSummaryOut(
+            commit_count=0,
+            insertions=0,
+            deletions=0,
+            files_changed=0,
+            active_days=0,
+            first_commit_at=None,
+            last_commit_at=None,
+        )
     row = (
         db.query(
             func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("commit_count"),
@@ -103,18 +165,18 @@ def get_developer_contributions(developer_id: int, db: Session = Depends(get_db)
             func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
             func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
         )
-        .filter(DeveloperContribution.developer_id == developer_id)
+        .filter(DeveloperContribution.profile_id.in_(profile_ids))
         .one()
     )
     dev_commits = int(row.commit_count)
     project_total_commits = None
     share_pct = None
-    if dev_commits > 0 and dev:
+    if project_id is not None and dev_commits > 0:
         project_total = (
             db.query(func.coalesce(func.sum(DeveloperContribution.commit_count), 0))
             .join(Scan, DeveloperContribution.scan_id == Scan.id)
             .join(Repository, Scan.repository_id == Repository.id)
-            .filter(Repository.project_id == dev.project_id)
+            .filter(Repository.project_id == project_id)
             .scalar()
         )
         if project_total and project_total > 0:
@@ -142,12 +204,19 @@ def get_developer_languages(
     dev = db.get(Developer, developer_id)
     if not dev:
         raise HTTPException(404, "Developer not found")
+    profile_ids_subq = db.query(DeveloperProfile.id).filter(DeveloperProfile.developer_id == developer_id)
+    profile_ids = [r[0] for r in profile_ids_subq.all()]
+    if not profile_ids:
+        return []
 
     if scan_id is not None:
         q = (
             db.query(DeveloperLanguageContribution)
             .options(joinedload(DeveloperLanguageContribution.language))
-            .filter_by(developer_id=developer_id, scan_id=scan_id)
+            .filter(
+                DeveloperLanguageContribution.profile_id.in_(profile_ids),
+                DeveloperLanguageContribution.scan_id == scan_id,
+            )
         )
         rows = q.order_by(DeveloperLanguageContribution.percentage.desc()).all()
         return [
@@ -161,7 +230,6 @@ def get_developer_languages(
             for r in rows
         ]
 
-    # Aggregate across all scans: group by language_id, sum metrics, recompute percentage
     agg = (
         db.query(
             Language.name,
@@ -170,7 +238,7 @@ def get_developer_languages(
             func.sum(DeveloperLanguageContribution.loc_added).label("loc_added"),
         )
         .join(DeveloperLanguageContribution, DeveloperLanguageContribution.language_id == Language.id)
-        .filter(DeveloperLanguageContribution.developer_id == developer_id)
+        .filter(DeveloperLanguageContribution.profile_id.in_(profile_ids))
         .group_by(Language.id, Language.name)
     )
     rows = agg.order_by(func.sum(DeveloperLanguageContribution.loc_added).desc()).all()
@@ -196,12 +264,19 @@ def get_developer_modules(
     dev = db.get(Developer, developer_id)
     if not dev:
         raise HTTPException(404, "Developer not found")
+    profile_ids_subq = db.query(DeveloperProfile.id).filter(DeveloperProfile.developer_id == developer_id)
+    profile_ids = [r[0] for r in profile_ids_subq.all()]
+    if not profile_ids:
+        return []
 
     if scan_id is not None:
         q = (
             db.query(DeveloperModuleContribution)
             .options(joinedload(DeveloperModuleContribution.module))
-            .filter_by(developer_id=developer_id, scan_id=scan_id)
+            .filter(
+                DeveloperModuleContribution.profile_id.in_(profile_ids),
+                DeveloperModuleContribution.scan_id == scan_id,
+            )
         )
         rows = q.order_by(DeveloperModuleContribution.percentage.desc()).all()
         return [
@@ -216,7 +291,6 @@ def get_developer_modules(
             for r in rows
         ]
 
-    # Aggregate across all scans: group by module_id, sum metrics, recompute percentage
     agg = (
         db.query(
             Module.path,
@@ -226,7 +300,7 @@ def get_developer_modules(
             func.sum(DeveloperModuleContribution.loc_added).label("loc_added"),
         )
         .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
-        .filter(DeveloperModuleContribution.developer_id == developer_id)
+        .filter(DeveloperModuleContribution.profile_id.in_(profile_ids))
         .group_by(Module.id, Module.path, Module.name)
     )
     rows = agg.order_by(func.sum(DeveloperModuleContribution.loc_added).desc()).all()

@@ -27,6 +27,7 @@ class ScanSummaryOut(BaseModel):
     status: str
     branch: str
     commit_sha: str | None
+    error_message: str | None = None
     total_files: int | None
     total_loc: int | None
     size_bytes: int | None

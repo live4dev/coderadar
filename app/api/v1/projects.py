@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import distinct
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Project, Developer, Repository, Scan, ScanScore, ScanStatus
+from app.models import (
+    Project, Developer, DeveloperProfile, DeveloperContribution,
+    Repository, Scan, ScanScore, ScanStatus,
+)
 from app.models.scan_score import ScoreDomain
 from app.schemas.project import ProjectCreate, ProjectOut
-from app.schemas.developer import DeveloperOut
+from app.schemas.developer import DeveloperOut, DeveloperProfileOut
 from app.schemas.repository import (
     RepositoryOut,
     RepositoryWithLatestScanOut,
@@ -131,7 +135,41 @@ def list_project_repositories_with_latest_scan(
 
 @router.get("/{project_id}/developers", response_model=list[DeveloperOut])
 def list_project_developers(project_id: int, db: Session = Depends(get_db)):
+    """List developers that have at least one contribution in this project (via scans)."""
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    return db.query(Developer).filter_by(project_id=project_id).all()
+    dev_ids = (
+        db.query(distinct(DeveloperProfile.developer_id))
+        .join(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
+        .join(Scan, DeveloperContribution.scan_id == Scan.id)
+        .join(Repository, Scan.repository_id == Repository.id)
+        .filter(Repository.project_id == project_id)
+        .all()
+    )
+    dev_ids = [r[0] for r in dev_ids]
+    if not dev_ids:
+        return []
+    developers = (
+        db.query(Developer)
+        .options(joinedload(Developer.profiles))
+        .filter(Developer.id.in_(dev_ids))
+        .all()
+    )
+    return [
+        DeveloperOut(
+            id=d.id,
+            profiles=[
+                DeveloperProfileOut(
+                    id=p.id,
+                    developer_id=p.developer_id,
+                    canonical_username=p.canonical_username,
+                    display_name=p.display_name,
+                    primary_email=p.primary_email,
+                )
+                for p in d.profiles
+            ],
+            created_at=d.created_at,
+        )
+        for d in developers
+    ]

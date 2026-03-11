@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models import (
-    Scan, ScanStatus, Repository, Developer, DeveloperIdentity,
+    Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
     ScanScore, ScanRisk, IdentityOverride,
@@ -48,6 +48,8 @@ def run_scan(scan_id: int, db: Session) -> None:
             repository_id=repo.id,
             repo_url=repo.url,
             provider_type=repo.provider_type.value,
+            project_name=repo.project.name,
+            repo_name=repo.name,
             branch=branch_arg,
             credentials_username=repo.credentials_username or "",
             credentials_token=repo.credentials_token or "",
@@ -203,32 +205,35 @@ def _persist_developers(
         module_id_map[m.path] = m.id
 
     for ds in dev_stats:
-        # Find or create developer
-        dev = (
-            db.query(Developer)
-            .filter_by(project_id=project_id, canonical_username=ds.canonical_username)
+        # Find or create profile (by canonical_username globally)
+        profile = (
+            db.query(DeveloperProfile)
+            .filter_by(canonical_username=ds.canonical_username)
             .first()
         )
-        if not dev:
-            dev = Developer(
-                project_id=project_id,
+        if not profile:
+            dev = Developer()
+            db.add(dev)
+            db.flush()
+            profile = DeveloperProfile(
+                developer_id=dev.id,
                 canonical_username=ds.canonical_username,
                 display_name=ds.display_name,
                 primary_email=ds.primary_email,
             )
-            db.add(dev)
+            db.add(profile)
             db.flush()
 
-        # Persist raw identities
+        # Persist raw identities (linked to profile)
         for raw_name, raw_email in ds.raw_identities:
             exists = (
                 db.query(DeveloperIdentity)
-                .filter_by(developer_id=dev.id, raw_name=raw_name)
+                .filter_by(profile_id=profile.id, raw_name=raw_name)
                 .first()
             )
             if not exists:
                 db.add(DeveloperIdentity(
-                    developer_id=dev.id,
+                    profile_id=profile.id,
                     raw_name=raw_name,
                     raw_email=raw_email,
                     confidence_score=ds.identity.confidence,
@@ -238,7 +243,7 @@ def _persist_developers(
         # Aggregate contribution
         db.add(DeveloperContribution(
             scan_id=scan.id,
-            developer_id=dev.id,
+            profile_id=profile.id,
             commit_count=ds.commit_count,
             insertions=ds.insertions,
             deletions=ds.deletions,
@@ -256,7 +261,7 @@ def _persist_developers(
                 continue
             db.add(DeveloperLanguageContribution(
                 scan_id=scan.id,
-                developer_id=dev.id,
+                profile_id=profile.id,
                 language_id=lang_id,
                 commit_count=stats[0],
                 files_changed=stats[1],
@@ -280,7 +285,7 @@ def _persist_developers(
 
             db.add(DeveloperModuleContribution(
                 scan_id=scan.id,
-                developer_id=dev.id,
+                profile_id=profile.id,
                 module_id=module_id_map[mod_path],
                 commit_count=stats[0],
                 files_changed=stats[1],
