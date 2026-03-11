@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models import Repository, Scan, ScanStatus, Project, ProviderType
 from app.schemas.repository import RepositoryCreate, RepositoryOut, ScanTrigger
 from app.schemas.scan import ScanOut
-from app.services.scanning.orchestrator import run_scan
+from app.services.scanning.queue import enqueue
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
@@ -48,7 +48,6 @@ def get_repository(repo_id: int, db: Session = Depends(get_db)):
 def trigger_scan(
     repo_id: int,
     body: ScanTrigger,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     repo = db.get(Repository, repo_id)
@@ -66,18 +65,8 @@ def trigger_scan(
     db.commit()
     db.refresh(scan)
 
-    background_tasks.add_task(_run_scan_bg, scan.id)
+    enqueue(scan.id)
     return scan
-
-
-def _run_scan_bg(scan_id: int) -> None:
-    """Background wrapper — creates its own DB session."""
-    from app.db.session import SessionLocal
-    db = SessionLocal()
-    try:
-        run_scan(scan_id, db)
-    finally:
-        db.close()
 
 
 @router.get("/{repo_id}/scans", response_model=list[ScanOut])
