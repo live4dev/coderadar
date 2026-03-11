@@ -565,7 +565,7 @@ async function render() {
 
 // ── Projects ──────────────────────────────────────────────────────────────
 async function renderProjects() {
-  const projects = await api('/projects');
+  const projects = await api('/projects/summary');
   let html = `
     <div class="page-title">Projects</div>
     <div class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''}</div>
@@ -576,10 +576,24 @@ async function renderProjects() {
   } else {
     html += '<div class="card-grid">';
     for (const p of projects) {
+      const hasScans = p.repos_with_completed_scan > 0;
+      const metricsParts = [];
+      metricsParts.push(p.repo_count + ' repo' + (p.repo_count !== 1 ? 's' : ''));
+      if (hasScans) {
+        metricsParts.push(fmt(p.total_loc) + ' LOC');
+        metricsParts.push(fmt(p.total_files) + ' files');
+        if (p.avg_score != null) metricsParts.push('avg ' + p.avg_score.toFixed(0));
+        if (p.last_scan_at) metricsParts.push('last ' + fmtDate(p.last_scan_at));
+      } else {
+        metricsParts.push('No scans yet');
+      }
+      const scanHealth = p.repo_count > 0 ? p.repos_with_completed_scan + '/' + p.repo_count + ' scanned' : '';
       html += `
         <div class="card" onclick="navigate('repos', {projectId: ${p.id}})">
           <div class="card-title">${esc(p.name)}</div>
           <div class="card-meta">${esc(p.description || 'No description')} · ID ${p.id}</div>
+          <div class="card-metrics" style="font-size:12px;color:var(--text-muted);margin:8px 0">${esc(metricsParts.join(' · '))}</div>
+          ${scanHealth ? `<div class="card-metrics" style="font-size:11px;color:var(--text-muted)">${esc(scanHealth)}</div>` : ''}
           <div class="card-footer">
             <span class="tag accent">View repos →</span>
           </div>
