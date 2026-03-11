@@ -2,7 +2,7 @@
 from app.models.project import Project
 from app.models.repository import Repository, ProviderType
 from app.models.scan import Scan, ScanStatus, ProjectType
-from app.models.developer import Developer, DeveloperIdentity, IdentityOverride
+from app.models.developer import Developer, DeveloperProfile, DeveloperIdentity, IdentityOverride
 from app.models.language import Language
 from app.models.scan_language import ScanLanguage
 from app.models.module import Module
@@ -23,6 +23,7 @@ __all__ = [
     "ScanStatus",
     "ProjectType",
     "Developer",
+    "DeveloperProfile",
     "DeveloperIdentity",
     "IdentityOverride",
     "Language",

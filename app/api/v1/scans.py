@@ -9,7 +9,6 @@ from app.schemas.scan import (
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
 )
-from app.schemas.developer import DeveloperContributionOut, DeveloperOut
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -145,15 +144,15 @@ def compare_scans(
         if rt not in risks_b:
             risk_diffs.append(ScanRiskDiff(risk_type=rt, title=r.title, severity=r.severity, change="resolved"))
 
-    # Developer diff
+    # Developer diff (by profile canonical_username)
     def _dev_usernames(scan: Scan) -> set[str]:
         rows = (
             db.query(DeveloperContribution)
-            .options(joinedload(DeveloperContribution.developer))
+            .options(joinedload(DeveloperContribution.profile))
             .filter_by(scan_id=scan.id)
             .all()
         )
-        return {r.developer.canonical_username for r in rows}
+        return {r.profile.canonical_username for r in rows}
 
     devs_a = _dev_usernames(scan_a)
     devs_b = _dev_usernames(scan_b)
@@ -178,18 +177,19 @@ def get_scan_developers(scan_id: int, db: Session = Depends(get_db)):
     _get_scan_or_404(scan_id, db)
     rows = (
         db.query(DeveloperContribution)
-        .options(joinedload(DeveloperContribution.developer))
+        .options(joinedload(DeveloperContribution.profile))
         .filter_by(scan_id=scan_id)
         .order_by(DeveloperContribution.commit_count.desc())
         .all()
     )
     return [
         {
-            "developer": {
-                "id": r.developer.id,
-                "canonical_username": r.developer.canonical_username,
-                "display_name": r.developer.display_name,
-                "primary_email": r.developer.primary_email,
+            "developer_id": r.profile.developer_id,
+            "profile": {
+                "id": r.profile.id,
+                "canonical_username": r.profile.canonical_username,
+                "display_name": r.profile.display_name,
+                "primary_email": r.profile.primary_email,
             },
             "commit_count": r.commit_count,
             "insertions": r.insertions,

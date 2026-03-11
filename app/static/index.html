@@ -734,6 +734,13 @@ async function renderScanDetail() {
         ${{summary:'Summary',languages:'Languages',scores:'Scores',risks:'Risks',developers:'Developers'}[t]}
       </div>`).join('');
 
+    const failedBlock = scan.status === 'failed' ? `
+      <div class="error-banner" style="margin-bottom:20px">
+        <div style="font-weight:600;margin-bottom:8px">Scan failed</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${scan.completed_at ? 'Failed at ' + fmtDate(scan.completed_at) : ''}</div>
+        <pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:300px;overflow:auto">${esc(scan.error_message || 'No error message recorded.')}</pre>
+      </div>` : '';
+
     setMain(`
       <div class="page-title">Scan #${state.scanId}</div>
       <div class="page-subtitle">
@@ -742,6 +749,7 @@ async function renderScanDetail() {
         ${scan.commit_sha ? '&nbsp;·&nbsp; <code style="font-size:11px">' + esc(scan.commit_sha.slice(0,8)) + '</code>' : ''}
         &nbsp;·&nbsp; ${fmtDate(scan.started_at)}
       </div>
+      ${failedBlock}
       <div class="tabs">${tabs}</div>
       ${content}
     `);
@@ -886,10 +894,12 @@ async function buildDevelopersTab() {
 
   const rows = devs.map((d) => {
     const share = total > 0 ? (d.commit_count / total * 100).toFixed(1) : 0;
+    const p = d.profile || {};
+    const name = p.display_name || p.canonical_username || '—';
     return `<tr>
       <td>
-        <div style="font-weight:600">${esc(d.developer.canonical_username)}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${esc(d.developer.primary_email || '')}</div>
+        <div style="font-weight:600">${esc(name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email || '')}</div>
       </td>
       <td>${fmt(d.commit_count)}</td>
       <td>
@@ -903,7 +913,7 @@ async function buildDevelopersTab() {
       <td>${fmt(d.files_changed)}</td>
       <td>${fmt(d.active_days)} days</td>
       <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-      <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer.id} })">Profile →</button></td>
+      <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
     </tr>`;
   }).join('');
 
@@ -952,7 +962,7 @@ async function renderDevelopersSummary() {
       </div>
       <div class="stat-box">
         <div class="stat-label">Top contributor</div>
-        <div class="stat-value" style="font-size:14px">${topOne ? esc(topOne.canonical_username) : '—'}</div>
+        <div class="stat-value" style="font-size:14px">${topOne && topOne.profiles && topOne.profiles[0] ? esc(topOne.profiles[0].display_name || topOne.profiles[0].canonical_username) : '—'}</div>
         <div class="stat-sub">${topOne && topOne.project_name ? esc(topOne.project_name) : ''}</div>
       </div>
       <div class="stat-box" style="align-self:flex-end">${filterHtml}</div>
@@ -962,7 +972,8 @@ async function renderDevelopersSummary() {
   if (devs.length && totalCommits > 0) {
     const segments = devs.slice(0, 20).map((d, i) => {
       const pct = (d.total_commits / totalCommits * 100).toFixed(2);
-      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}" title="${esc(d.canonical_username)} ${pct}%"></div>`;
+      const label = d.profiles && d.profiles[0] ? (d.profiles[0].display_name || d.profiles[0].canonical_username) : '—';
+      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}" title="${esc(label)} ${pct}%"></div>`;
     }).join('');
     barHtml = `<div class="section-title" style="margin-bottom:8px">Commit share</div><div class="lang-bar">${segments}</div>`;
   }
@@ -971,10 +982,15 @@ async function renderDevelopersSummary() {
   if (devs.length) {
     tableRows = devs.map(d => {
       const share = totalCommits > 0 ? (d.total_commits / totalCommits * 100).toFixed(1) : 0;
+      const first = d.profiles && d.profiles[0];
+      const devName = first ? (first.display_name || first.canonical_username) : '—';
+      const devEmail = first ? (first.primary_email || '') : '';
+      const extraProfiles = d.profiles && d.profiles.length > 1 ? `<div style="font-size:10px;color:var(--text-muted)">+${d.profiles.length - 1} profile(s)</div>` : '';
       return `<tr style="cursor:pointer" onclick="navigate('developer', { developerId: ${d.id} })">
         <td>
-          <div style="font-weight:600">${esc(d.canonical_username)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${esc(d.primary_email || '')}</div>
+          <div style="font-weight:600">${esc(devName)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${esc(devEmail)}</div>
+          ${extraProfiles}
         </td>
         <td><span class="tag">${esc(d.project_name || '')}</span></td>
         <td>${fmt(d.total_commits)}</td>
@@ -1090,17 +1106,29 @@ async function renderDeveloperProfile() {
       </table>`;
   }
 
+  const profiles = dev.profiles || [];
+  const primaryName = profiles[0] ? (profiles[0].display_name || profiles[0].canonical_username) : ('Developer #' + dev.id);
+  const profilesBlock = profiles.length ? `
+    <div class="section-header" style="margin-top:20px"><div class="section-title">Profiles (${profiles.length})</div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      ${profiles.map(p => `
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;min-width:180px">
+          <div style="font-weight:600;font-size:13px">${esc(p.display_name || p.canonical_username)}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${esc(p.canonical_username)}</div>
+          ${p.primary_email ? `<div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>` : '';
+
   setMain(`
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
       <div>
-        <div class="page-title">${esc(dev.display_name || dev.canonical_username)}</div>
-        <div class="page-subtitle">
-          ${esc(dev.canonical_username)}${dev.primary_email ? ' · ' + esc(dev.primary_email) : ''}
-          ${dev.project_name ? '<br><span class="tag">' + esc(dev.project_name) + '</span>' : ''}
-        </div>
+        <div class="page-title">${esc(primaryName)}</div>
+        <div class="page-subtitle">Developer #${dev.id}${profiles.length > 0 ? ' · ' + profiles.length + ' profile(s)' : ''}</div>
       </div>
       <button class="btn btn-outline" onclick="navigate('developers')">← Back to developers</button>
     </div>
+    ${profilesBlock}
     <div style="margin-bottom:16px;font-size:12px;color:var(--text-muted)">
       First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
     </div>

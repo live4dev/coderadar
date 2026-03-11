@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models import Module, DeveloperModuleContribution, Developer
+from app.models import Module, DeveloperModuleContribution, DeveloperProfile
 
 router = APIRouter(prefix="/modules", tags=["modules"])
 
@@ -14,8 +14,8 @@ def get_module_ownership(module_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Module not found")
 
     rows = (
-        db.query(DeveloperModuleContribution, Developer)
-        .join(Developer, DeveloperModuleContribution.developer_id == Developer.id)
+        db.query(DeveloperModuleContribution, DeveloperProfile)
+        .join(DeveloperProfile, DeveloperModuleContribution.profile_id == DeveloperProfile.id)
         .filter(DeveloperModuleContribution.module_id == module_id)
         .order_by(DeveloperModuleContribution.percentage.desc())
         .all()
@@ -23,14 +23,15 @@ def get_module_ownership(module_id: int, db: Session = Depends(get_db)):
 
     owners = [
         {
-            "developer_id": dev.id,
-            "canonical_username": dev.canonical_username,
-            "display_name": dev.display_name,
+            "developer_id": profile.developer_id,
+            "profile_id": profile.id,
+            "canonical_username": profile.canonical_username,
+            "display_name": profile.display_name,
             "commit_count": contrib.commit_count,
             "files_changed": contrib.files_changed,
             "percentage": contrib.percentage,
         }
-        for contrib, dev in rows
+        for contrib, profile in rows
     ]
 
     return {"module_id": module_id, "path": module.path, "name": module.name, "owners": owners}

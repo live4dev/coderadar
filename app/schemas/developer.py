@@ -3,25 +3,29 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class DeveloperOut(BaseModel):
+class DeveloperProfileOut(BaseModel):
+    """One profile of a developer (canonical_username + email)."""
     id: int
+    developer_id: int
     canonical_username: str
     display_name: str | None
     primary_email: str | None
-    project_id: int
-    project_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DeveloperOut(BaseModel):
+    """Global developer with their profiles."""
+    id: int
+    profiles: list[DeveloperProfileOut]
+    created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class DeveloperListOut(BaseModel):
-    """Developer with aggregates across all scans in their project."""
+    """Developer with aggregates across all their profiles (optionally filtered by project)."""
     id: int
-    canonical_username: str
-    display_name: str | None
-    primary_email: str | None
-    project_id: int
-    project_name: str
     total_commits: int
     total_insertions: int
     total_deletions: int
@@ -29,6 +33,9 @@ class DeveloperListOut(BaseModel):
     active_days: int
     first_commit_at: datetime | None
     last_commit_at: datetime | None
+    project_id: int | None = None
+    project_name: str | None = None
+    profiles: list[DeveloperProfileOut] = []
 
     model_config = {"from_attributes": True}
 
