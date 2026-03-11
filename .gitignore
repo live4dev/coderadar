@@ -44,6 +44,9 @@ lib/
 !.vscode/extensions.json
 # Если хотите игнорировать ВЕСЬ .vscode, закомментируйте 4 строки выше и раскомментируйте строку ниже:
 # .vscode/*
+.idea/
+.cursor
+
 
 # --- Environment Variables ---
 .env
@@ -68,3 +71,5 @@ coverage.xml
 coderadar.db
 coderadar.db-shm
 coderadar.db-wal
+
+repos_cache/

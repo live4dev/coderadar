@@ -43,9 +43,14 @@ alembic upgrade head
 
 # 5. Start server
 uvicorn app.main:app --reload --port 8000
+
+# 6. (Optional) Start scan worker in another terminal — processes scans (pending → running → completed)
+python -m app.worker
 ```
 
 API docs available at: http://localhost:8000/docs
+
+Scans are processed by a **separate worker process**. After `POST .../scan` the scan stays `pending` until the worker picks it from the DB. Run `python -m app.worker` in a separate terminal (or as a systemd/supervisor service).
 
 ## Add a repository and run a scan
 

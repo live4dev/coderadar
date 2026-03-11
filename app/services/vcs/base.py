@@ -23,21 +23,20 @@ class BaseVCSProvider(ABC):
     def build_clone_url(self, repo_url: str) -> str:
         """Return an authenticated clone URL."""
 
-    def clone(self, repo_url: str, target_dir: Path, branch: str = "main") -> CloneResult:
+    def clone(self, repo_url: str, target_dir: Path, branch: str | None = None) -> CloneResult:
         import git
         clone_url = self.build_clone_url(repo_url)
-        repo = git.Repo.clone_from(
-            clone_url,
-            str(target_dir),
-            branch=branch,
-            depth=0,  # full history for git analytics
-        )
+        clone_kwargs = {} if branch is None else {"branch": branch}
+        repo = git.Repo.clone_from(clone_url, str(target_dir), **clone_kwargs)
         commit_sha = repo.head.commit.hexsha
-        return CloneResult(local_path=target_dir, commit_sha=commit_sha, branch=branch)
+        actual_branch = repo.active_branch.name
+        return CloneResult(local_path=target_dir, commit_sha=commit_sha, branch=actual_branch)
 
-    def fetch(self, local_path: Path, branch: str) -> CloneResult:
+    def fetch(self, local_path: Path, branch: str | None = None) -> CloneResult:
         import git
         repo = git.Repo(str(local_path))
+        if branch is None:
+            branch = repo.active_branch.name
         origin = repo.remotes.origin
         # Re-set URL with fresh credentials (token may have changed)
         old_url = origin.url
