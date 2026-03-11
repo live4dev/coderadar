@@ -48,6 +48,8 @@ def run_scan(scan_id: int, db: Session) -> None:
             repository_id=repo.id,
             repo_url=repo.url,
             provider_type=repo.provider_type.value,
+            project_name=repo.project.name,
+            repo_name=repo.name,
             branch=branch_arg,
             credentials_username=repo.credentials_username or "",
             credentials_token=repo.credentials_token or "",
