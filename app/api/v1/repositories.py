@@ -1,13 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Repository, Scan, ScanStatus, Project, ProviderType
+from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType
+from app.schemas.project import TagsUpdate
 from app.schemas.repository import RepositoryCreate, RepositoryOut, ScanTrigger
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
+
+
+def _normalize_tags(tags: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for t in tags:
+        if not isinstance(t, str):
+            continue
+        s = t.strip()[:128]
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def _set_repository_tags(db: Session, repository_id: int, tags: list[str]) -> None:
+    db.query(RepositoryTag).filter(RepositoryTag.repository_id == repository_id).delete()
+    for tag in _normalize_tags(tags):
+        db.add(RepositoryTag(repository_id=repository_id, tag=tag))
 
 
 @router.post("", response_model=RepositoryOut, status_code=201)
@@ -33,14 +53,30 @@ def create_repository(body: RepositoryCreate, db: Session = Depends(get_db)):
     db.add(repo)
     db.commit()
     db.refresh(repo)
+    _set_repository_tags(db, repo.id, body.tags)
+    db.commit()
+    db.refresh(repo)
+    repo = db.query(Repository).options(joinedload(Repository.tags)).filter(Repository.id == repo.id).first()
     return repo
 
 
 @router.get("/{repo_id}", response_model=RepositoryOut)
 def get_repository(repo_id: int, db: Session = Depends(get_db)):
+    repo = db.query(Repository).options(joinedload(Repository.tags)).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    return repo
+
+
+@router.put("/{repo_id}/tags", response_model=RepositoryOut)
+def set_repository_tags(repo_id: int, body: TagsUpdate, db: Session = Depends(get_db)):
     repo = db.get(Repository, repo_id)
     if not repo:
         raise HTTPException(404, "Repository not found")
+    _set_repository_tags(db, repo_id, body.tags)
+    db.commit()
+    db.refresh(repo)
+    repo = db.query(Repository).options(joinedload(Repository.tags)).filter(Repository.id == repo_id).first()
     return repo
 
 

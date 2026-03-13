@@ -182,6 +182,12 @@ def get_scan_developers(scan_id: int, db: Session = Depends(get_db)):
         .order_by(DeveloperContribution.commit_count.desc())
         .all()
     )
+    dev_ids = list({r.profile.developer_id for r in rows})
+    dev_tags = {}
+    if dev_ids:
+        from app.models import Developer
+        devs = db.query(Developer).options(joinedload(Developer.tags)).filter(Developer.id.in_(dev_ids)).all()
+        dev_tags = {d.id: [t.tag for t in d.tags] for d in devs}
     return [
         {
             "developer_id": r.profile.developer_id,
@@ -198,6 +204,7 @@ def get_scan_developers(scan_id: int, db: Session = Depends(get_db)):
             "active_days": r.active_days,
             "first_commit_at": r.first_commit_at,
             "last_commit_at": r.last_commit_at,
+            "tags": dev_tags.get(r.profile.developer_id, []),
         }
         for r in rows
     ]

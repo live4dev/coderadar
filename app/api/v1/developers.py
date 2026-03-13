@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import (
-    Developer, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
+    Developer, DeveloperTag, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
     DeveloperModuleContribution, IdentityOverride, Language, Module, Project,
     Repository, Scan,
 )
+from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
     DeveloperOut, DeveloperListOut, DeveloperProfileOut, DeveloperLanguageOut,
     DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
@@ -26,14 +27,24 @@ def _profile_to_out(p: DeveloperProfile) -> DeveloperProfileOut:
     )
 
 
+SORT_FIELDS = {"commits", "insertions", "deletions", "files_changed", "active_days", "last_commit_at", "name"}
+
+
 @router.get("", response_model=list[DeveloperListOut])
 def list_developers(
     project_id: int | None = None,
+    sort_by: str = Query("commits", description="Sort by: commits, insertions, deletions, files_changed, active_days, last_commit_at, name"),
+    order: str = Query("desc", description="Sort order: asc or desc"),
+    q: str | None = Query(None, description="Search by display name, username or email"),
     db: Session = Depends(get_db),
 ):
-    """List all developers with aggregated stats (across all their profiles). Optional project_id filter."""
+    """List all developers with aggregated stats (across all their profiles). Optional project_id, sort, search."""
+    if sort_by not in SORT_FIELDS:
+        sort_by = "commits"
+    order_asc = order.lower() == "asc"
+
     if project_id is not None:
-        q = (
+        q_base = (
             db.query(
                 Developer.id,
                 func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
@@ -52,7 +63,7 @@ def list_developers(
             .group_by(Developer.id)
         )
     else:
-        q = (
+        q_base = (
             db.query(
                 Developer.id,
                 func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
@@ -67,8 +78,66 @@ def list_developers(
             .outerjoin(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
             .group_by(Developer.id)
         )
-    total_commits_expr = func.coalesce(func.sum(DeveloperContribution.commit_count), 0)
-    rows = q.order_by(total_commits_expr.desc()).all()
+
+    if q and q.strip():
+        search_term = f"%{q.strip()}%"
+        dev_ids_with_search = (
+            db.query(Developer.id)
+            .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
+            .filter(
+                or_(
+                    DeveloperProfile.display_name.ilike(search_term),
+                    DeveloperProfile.canonical_username.ilike(search_term),
+                    DeveloperProfile.primary_email.ilike(search_term),
+                )
+            )
+            .distinct()
+            .subquery()
+        )
+        q_base = q_base.filter(Developer.id.in_(db.query(dev_ids_with_search.c.id)))
+
+    if sort_by == "name":
+        rows = q_base.all()
+        dev_ids = [r.id for r in rows]
+        if not dev_ids:
+            return []
+        developers_with_profiles = (
+            db.query(Developer)
+            .options(joinedload(Developer.profiles), joinedload(Developer.tags))
+            .filter(Developer.id.in_(dev_ids))
+            .all()
+        )
+        dev_map = {d.id: d for d in developers_with_profiles}
+
+        def name_key(rid):
+            dev = dev_map.get(rid, Developer())
+            profs = dev.profiles or []
+            first = profs[0] if profs else None
+            if first:
+                return (first.display_name or first.canonical_username or "").lower()
+            return ""
+
+        rows = sorted(rows, key=lambda r: name_key(r.id), reverse=not order_asc)
+    else:
+        if sort_by == "commits":
+            order_expr = func.coalesce(func.sum(DeveloperContribution.commit_count), 0)
+        elif sort_by == "insertions":
+            order_expr = func.coalesce(func.sum(DeveloperContribution.insertions), 0)
+        elif sort_by == "deletions":
+            order_expr = func.coalesce(func.sum(DeveloperContribution.deletions), 0)
+        elif sort_by == "files_changed":
+            order_expr = func.coalesce(func.sum(DeveloperContribution.files_changed), 0)
+        elif sort_by == "active_days":
+            order_expr = func.coalesce(func.sum(DeveloperContribution.active_days), 0)
+        elif sort_by == "last_commit_at":
+            order_expr = func.max(DeveloperContribution.last_commit_at)
+        else:
+            order_expr = func.coalesce(func.sum(DeveloperContribution.commit_count), 0)
+        if order_asc:
+            order_expr = order_expr.asc()
+        else:
+            order_expr = order_expr.desc()
+        rows = q_base.order_by(order_expr).all()
 
     if not rows:
         return []
@@ -76,7 +145,7 @@ def list_developers(
     dev_ids = [r.id for r in rows]
     developers_with_profiles = (
         db.query(Developer)
-        .options(joinedload(Developer.profiles))
+        .options(joinedload(Developer.profiles), joinedload(Developer.tags))
         .filter(Developer.id.in_(dev_ids))
         .all()
     )
@@ -99,16 +168,36 @@ def list_developers(
             project_id=project_id,
             project_name=project_name,
             profiles=[_profile_to_out(p) for p in dev_map.get(r.id, Developer()).profiles],
+            tags=[t.tag for t in (dev_map.get(r.id).tags if dev_map.get(r.id) else [])],
         )
         for r in rows
     ]
+
+
+def _normalize_tags(tags: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for t in tags:
+        if not isinstance(t, str):
+            continue
+        s = t.strip()[:128]
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def _set_developer_tags(db: Session, developer_id: int, tags: list[str]) -> None:
+    db.query(DeveloperTag).filter(DeveloperTag.developer_id == developer_id).delete()
+    for tag in _normalize_tags(tags):
+        db.add(DeveloperTag(developer_id=developer_id, tag=tag))
 
 
 @router.get("/{developer_id}", response_model=DeveloperOut)
 def get_developer(developer_id: int, db: Session = Depends(get_db)):
     dev = (
         db.query(Developer)
-        .options(joinedload(Developer.profiles))
+        .options(joinedload(Developer.profiles), joinedload(Developer.tags))
         .filter(Developer.id == developer_id)
         .first()
     )
@@ -118,6 +207,29 @@ def get_developer(developer_id: int, db: Session = Depends(get_db)):
         id=dev.id,
         profiles=[_profile_to_out(p) for p in dev.profiles],
         created_at=dev.created_at,
+        tags=[t.tag for t in dev.tags],
+    )
+
+
+@router.put("/{developer_id}/tags", response_model=DeveloperOut)
+def set_developer_tags(developer_id: int, body: TagsUpdate, db: Session = Depends(get_db)):
+    dev = db.get(Developer, developer_id)
+    if not dev:
+        raise HTTPException(404, "Developer not found")
+    _set_developer_tags(db, developer_id, body.tags)
+    db.commit()
+    db.refresh(dev)
+    dev = (
+        db.query(Developer)
+        .options(joinedload(Developer.profiles), joinedload(Developer.tags))
+        .filter(Developer.id == developer_id)
+        .first()
+    )
+    return DeveloperOut(
+        id=dev.id,
+        profiles=[_profile_to_out(p) for p in dev.profiles],
+        created_at=dev.created_at,
+        tags=[t.tag for t in dev.tags],
     )
 
 

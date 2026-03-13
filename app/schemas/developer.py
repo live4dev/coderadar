@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class DeveloperProfileOut(BaseModel):
@@ -19,8 +19,17 @@ class DeveloperOut(BaseModel):
     id: int
     profiles: list[DeveloperProfileOut]
     created_at: datetime | None = None
+    tags: list[str] = []
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _tags_from_orm(cls, data, handler):
+        if not isinstance(data, dict) and hasattr(data, "tags") and data.tags is not None:
+            d = {"id": data.id, "profiles": data.profiles, "created_at": data.created_at, "tags": [t.tag for t in data.tags]}
+            return handler(d)
+        return handler(data)
 
 
 class DeveloperListOut(BaseModel):
@@ -36,6 +45,7 @@ class DeveloperListOut(BaseModel):
     project_id: int | None = None
     project_name: str | None = None
     profiles: list[DeveloperProfileOut] = []
+    tags: list[str] = []
 
     model_config = {"from_attributes": True}
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, DateTime, ForeignKey, Float, Boolean, func
+from sqlalchemy import String, Text, DateTime, ForeignKey, Float, Boolean, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -13,6 +13,19 @@ if TYPE_CHECKING:
     )
 
 
+class DeveloperTag(Base):
+    __tablename__ = "developer_tags"
+    __table_args__ = (UniqueConstraint("developer_id", "tag", name="uq_developer_tags_developer_id_tag"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    developer_id: Mapped[int] = mapped_column(
+        ForeignKey("developers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tag: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    developer: Mapped[Developer] = relationship("Developer", back_populates="tags")
+
+
 class Developer(Base):
     """Global developer (person). Can have multiple profiles with different keys and emails."""
     __tablename__ = "developers"
@@ -22,6 +35,9 @@ class Developer(Base):
 
     profiles: Mapped[list[DeveloperProfile]] = relationship(
         "DeveloperProfile", back_populates="developer", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list[DeveloperTag]] = relationship(
+        "DeveloperTag", back_populates="developer", cascade="all, delete-orphan"
     )
 
 
