@@ -1,8 +1,8 @@
 # Import all models so Alembic autogenerate can discover them
-from app.models.project import Project
-from app.models.repository import Repository, ProviderType
+from app.models.project import Project, ProjectTag
+from app.models.repository import Repository, RepositoryTag, ProviderType
 from app.models.scan import Scan, ScanStatus, ProjectType
-from app.models.developer import Developer, DeveloperProfile, DeveloperIdentity, IdentityOverride
+from app.models.developer import Developer, DeveloperTag, DeveloperProfile, DeveloperIdentity, IdentityOverride
 from app.models.language import Language
 from app.models.scan_language import ScanLanguage
 from app.models.module import Module
@@ -17,12 +17,15 @@ from app.models.scan_risk import ScanRisk, RiskSeverity, RiskType, EntityType
 
 __all__ = [
     "Project",
+    "ProjectTag",
     "Repository",
+    "RepositoryTag",
     "ProviderType",
     "Scan",
     "ScanStatus",
     "ProjectType",
     "Developer",
+    "DeveloperTag",
     "DeveloperProfile",
     "DeveloperIdentity",
     "IdentityOverride",

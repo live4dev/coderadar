@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, func
+from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.db.base import Base
@@ -10,6 +10,19 @@ if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.scan import Scan
     from app.models.module import Module
+
+
+class RepositoryTag(Base):
+    __tablename__ = "repository_tags"
+    __table_args__ = (UniqueConstraint("repository_id", "tag", name="uq_repository_tags_repository_id_tag"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    repository_id: Mapped[int] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tag: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    repository: Mapped[Repository] = relationship("Repository", back_populates="tags")
 
 
 class ProviderType(str, enum.Enum):
@@ -48,4 +61,7 @@ class Repository(Base):
     )
     modules: Mapped[list[Module]] = relationship(
         "Module", back_populates="repository", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list[RepositoryTag]] = relationship(
+        "RepositoryTag", back_populates="repository", cascade="all, delete-orphan"
     )
