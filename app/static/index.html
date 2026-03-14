@@ -638,9 +638,27 @@ async function render() {
 // ── Analytics (treemap) ──────────────────────────────────────────────────
 let treemapChartInstance = null;
 let stateTreemapMetric = 'loc';
+let stateTreemapProjectId = null; // null = all projects
+let stateTreemapGroupBy = 'projects_repos'; // or 'projects_repos_languages'
 function treemapMetricChange() {
   const sel = document.getElementById('treemap-metric');
   if (sel) stateTreemapMetric = sel.value;
+  renderAnalytics();
+}
+function treemapProjectChange() {
+  const sel = document.getElementById('treemap-project');
+  if (sel) {
+    const v = sel.value;
+    stateTreemapProjectId = (v === '' || v === 'all') ? null : parseInt(v, 10);
+  }
+  renderAnalytics();
+}
+function treemapGroupByChange() {
+  const sel = document.getElementById('treemap-group-by');
+  if (sel) {
+    stateTreemapGroupBy = sel.value;
+    if (stateTreemapGroupBy === 'projects_repos_languages' && (stateTreemapMetric === 'commits' || stateTreemapMetric === 'developers')) stateTreemapMetric = 'loc';
+  }
   renderAnalytics();
 }
 function treeToECharts(node) {
@@ -651,19 +669,44 @@ function treeToECharts(node) {
   return n;
 }
 async function renderAnalytics() {
+  const projects = await api('/projects/summary');
+  const projectOptions = projects.map(function(p) {
+    const sel = stateTreemapProjectId !== null && stateTreemapProjectId === p.id ? ' selected' : '';
+    return '<option value="' + p.id + '"' + sel + '>' + esc(p.name) + '</option>';
+  }).join('');
+  const isLanguagesView = stateTreemapGroupBy === 'projects_repos_languages';
+  const metricOpts = isLanguagesView
+    ? '<option value="loc" ' + (stateTreemapMetric === 'loc' ? 'selected' : '') + '>LOC</option><option value="files" ' + (stateTreemapMetric === 'files' ? 'selected' : '') + '>Files</option>'
+    : '<option value="loc" ' + (stateTreemapMetric === 'loc' ? 'selected' : '') + '>LOC</option><option value="files" ' + (stateTreemapMetric === 'files' ? 'selected' : '') + '>Files</option><option value="commits" ' + (stateTreemapMetric === 'commits' ? 'selected' : '') + '>Commits</option><option value="developers" ' + (stateTreemapMetric === 'developers' ? 'selected' : '') + '>Developers</option>';
   setMain(`
     <h1 class="page-title">Analytics</h1>
-    <p class="page-subtitle">Treemap: LOC or files by project and repository (from latest completed scan per repo).</p>
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-      <label for="treemap-metric" style="font-size:13px;color:var(--text-muted)">Size by</label>
-      <select id="treemap-metric" class="modal-input" style="width:120px;margin:0" onchange="treemapMetricChange()">
-        <option value="loc" ${stateTreemapMetric === 'loc' ? 'selected' : ''}>LOC</option>
-        <option value="files" ${stateTreemapMetric === 'files' ? 'selected' : ''}>Files</option>
-      </select>
+    <p class="page-subtitle">Treemap from latest completed scan per repo.</p>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:6px">
+        <label for="treemap-group-by" style="font-size:13px;color:var(--text-muted)">View</label>
+        <select id="treemap-group-by" class="modal-input" style="width:200px;margin:0" onchange="treemapGroupByChange()">
+          <option value="projects_repos" ${stateTreemapGroupBy === 'projects_repos' ? 'selected' : ''}>By project & repo</option>
+          <option value="projects_repos_languages" ${stateTreemapGroupBy === 'projects_repos_languages' ? 'selected' : ''}>By technology (languages)</option>
+        </select>
+      </span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <label for="treemap-project" style="font-size:13px;color:var(--text-muted)">Project</label>
+        <select id="treemap-project" class="modal-input" style="width:180px;margin:0" onchange="treemapProjectChange()">
+          <option value="all" ${stateTreemapProjectId === null ? 'selected' : ''}>All projects</option>
+          ${projectOptions}
+        </select>
+      </span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <label for="treemap-metric" style="font-size:13px;color:var(--text-muted)">Size by</label>
+        <select id="treemap-metric" class="modal-input" style="width:140px;margin:0" onchange="treemapMetricChange()">
+          ${metricOpts}
+        </select>
+      </span>
     </div>
     <div id="treemap-chart"></div>
   `);
-  const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
+  const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: stateTreemapGroupBy });
+  if (stateTreemapProjectId !== null) params.set('project_id', String(stateTreemapProjectId));
   const tree = await api('/analytics/treemap?' + params.toString());
   const root = treeToECharts(tree);
   if (!root || root.value === 0) {
@@ -676,12 +719,14 @@ async function renderAnalytics() {
     return;
   }
   treemapChartInstance = echarts.init(chartEl, 'dark');
+  const metricLabels = { loc: 'LOC', files: 'Files', commits: 'Commits', developers: 'Developers' };
+  const metricLabel = metricLabels[stateTreemapMetric] || stateTreemapMetric;
   const option = {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item', formatter: function(info) {
       const v = info.value;
       const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
-      return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
+      return info.name + '<br/>' + metricLabel + ': ' + fmt(v) + ' (' + pct + '%)';
     }},
     series: [{
       type: 'treemap',
