@@ -9,8 +9,9 @@ from app.models import (
     Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
-    ScanScore, ScanRisk, IdentityOverride,
+    ScanScore, ScanRisk, ScanPersonalDataFinding, IdentityOverride,
 )
+from app.services.pii import load_pdn_config, scan_repository_for_pdn
 from app.services.vcs.workspace import RepoWorkspaceManager
 from app.services.analysis.file_analyzer import analyze_files
 from app.services.analysis.stack_detector import detect_stack
@@ -137,6 +138,24 @@ def run_scan(scan_id: int, db: Session) -> None:
                 entity_ref=r.entity_ref,
             ))
         db.commit()
+
+        # ── Stage 6b: personal data (PDn) scan ───────────────────────────────
+        logger.info("stage_personal_data")
+        try:
+            pdn_types = load_pdn_config()
+            findings = scan_repository_for_pdn(repo_path, pdn_types)
+            for f in findings:
+                db.add(ScanPersonalDataFinding(
+                    scan_id=scan.id,
+                    pdn_type=f.pdn_type,
+                    file_path=f.file_path,
+                    line_number=f.line_number,
+                    matched_identifier=f.matched_identifier,
+                ))
+            db.commit()
+        except Exception as pdn_exc:
+            logger.warning("pdn_scan_failed", scan_id=scan_id, error=str(pdn_exc))
+            db.rollback()
 
         # ── Stage 7: complete ──────────────────────────────────────────────
         scan.status = ScanStatus.completed

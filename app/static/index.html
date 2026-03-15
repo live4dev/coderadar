@@ -442,7 +442,7 @@ const LANG_COLORS = [
 
 // ── Router ────────────────────────────────────────────────────────────────
 const UI_BASE = '/ui';
-const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers'];
+const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data'];
 
 function pathToState(pathname) {
   const raw = pathname.replace(/^\/ui\/?/, '').replace(/\/$/, '');
@@ -941,16 +941,16 @@ async function renderScanDetail() {
     const scan = await api('/scans/' + state.scanId + '/summary');
 
     let content = '';
-    if (state.tab === 'summary')    content = await buildSummaryTab(scan);
-    if (state.tab === 'languages')  content = await buildLanguagesTab();
-    if (state.tab === 'scores')     content = await buildScoresTab(scan);
-    if (state.tab === 'risks')      content = await buildRisksTab();
-    if (state.tab === 'developers') content = await buildDevelopersTab();
+    if (state.tab === 'summary')        content = await buildSummaryTab(scan);
+    if (state.tab === 'languages')      content = await buildLanguagesTab();
+    if (state.tab === 'scores')         content = await buildScoresTab(scan);
+    if (state.tab === 'risks')          content = await buildRisksTab();
+    if (state.tab === 'developers')     content = await buildDevelopersTab();
+    if (state.tab === 'personal-data')  content = await buildPersonalDataTab(scan);
 
-    const tabs = ['summary','languages','scores','risks','developers']
-      .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">
-        ${{summary:'Summary',languages:'Languages',scores:'Scores',risks:'Risks',developers:'Developers'}[t]}
-      </div>`).join('');
+    const tabLabels = { summary: 'Summary', languages: 'Languages', scores: 'Scores', risks: 'Risks', developers: 'Developers', 'personal-data': 'Personal Data' };
+    const tabs = ['summary','languages','scores','risks','developers','personal-data']
+      .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">${tabLabels[t]}</div>`).join('');
 
     const failedBlock = scan.status === 'failed' ? `
       <div class="error-banner" style="margin-bottom:20px">
@@ -1099,6 +1099,37 @@ async function buildRisksTab() {
     <div class="stats-row" style="margin-bottom:24px">${summary}</div>
     <table>
       <thead><tr><th>Severity</th><th>Risk</th><th>Description</th><th>Scope</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Personal Data tab ─────────────────────────────────────────────────────
+async function buildPersonalDataTab(scan) {
+  if (scan.status !== 'completed') {
+    return '<div class="empty"><div class="icon">🔍</div><p>Run a scan and wait for it to complete to see personal data findings.</p></div>';
+  }
+  let data;
+  try {
+    data = await api('/scans/' + state.scanId + '/personal-data');
+  } catch (e) {
+    return '<div class="empty"><div class="icon">⚠️</div><p>Could not load personal data results.</p></div>';
+  }
+  const counts = data.counts || [];
+  const findings = data.findings || [];
+  if (!counts.length && !findings.length) {
+    return '<div class="empty"><div class="icon">✅</div><p>No personal data identifiers found in this scan.</p></div>';
+  }
+  const badges = counts.map(c => `<span class="badge" style="margin-right:8px;margin-bottom:8px">${esc(c.pdn_type)}: ${c.count}</span>`).join('');
+  const rows = findings.map(f => `<tr>
+    <td><span class="tag">${esc(f.pdn_type)}</span></td>
+    <td><code style="font-size:12px">${esc(f.matched_identifier)}</code></td>
+    <td style="font-size:12px;word-break:break-all">${esc(f.file_path)}</td>
+    <td style="text-align:right">${f.line_number}</td>
+  </tr>`).join('');
+  return `
+    <div class="stats-row" style="margin-bottom:20px;flex-wrap:wrap">${badges}</div>
+    <table>
+      <thead><tr><th>Data type</th><th>Variable name</th><th>Path</th><th>Line</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }

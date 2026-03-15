@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.scan_score import ScanScore
     from app.models.scan_risk import ScanRisk
     from app.models.contribution import DeveloperContribution
+from app.models.scan_personal_data_finding import ScanPersonalDataFinding
 
 
 class ScanStatus(str, enum.Enum):
@@ -86,4 +87,7 @@ class Scan(Base):
     )
     contributions: Mapped[list[DeveloperContribution]] = relationship(
         "DeveloperContribution", back_populates="scan", cascade="all, delete-orphan"
+    )
+    personal_data_findings: Mapped[list[ScanPersonalDataFinding]] = relationship(
+        "ScanPersonalDataFinding", back_populates="scan", cascade="all, delete-orphan"
     )

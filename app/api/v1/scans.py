@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, DeveloperContribution
+from app.models import Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding, DeveloperContribution
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
     DependencyOut, ScanScoreOut, ScanRiskOut,
+    PersonalDataOut, PersonalDataCountOut, PersonalDataFindingOut,
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
 )
@@ -72,6 +74,34 @@ def get_scan_risks(scan_id: int, db: Session = Depends(get_db)):
         .order_by(ScanRisk.severity.desc())
         .all()
     )
+
+
+@router.get("/{scan_id}/personal-data", response_model=PersonalDataOut)
+def get_scan_personal_data(scan_id: int, db: Session = Depends(get_db)):
+    _get_scan_or_404(scan_id, db)
+    rows = (
+        db.query(ScanPersonalDataFinding)
+        .filter_by(scan_id=scan_id)
+        .order_by(ScanPersonalDataFinding.pdn_type, ScanPersonalDataFinding.file_path, ScanPersonalDataFinding.line_number)
+        .all()
+    )
+    # Aggregate counts by pdn_type
+    count_q = (
+        db.query(ScanPersonalDataFinding.pdn_type, func.count(ScanPersonalDataFinding.id).label("count"))
+        .filter_by(scan_id=scan_id)
+        .group_by(ScanPersonalDataFinding.pdn_type)
+    )
+    counts = [PersonalDataCountOut(pdn_type=t, count=c) for t, c in count_q.all()]
+    findings = [
+        PersonalDataFindingOut(
+            pdn_type=r.pdn_type,
+            matched_identifier=r.matched_identifier,
+            file_path=r.file_path,
+            line_number=r.line_number,
+        )
+        for r in rows
+    ]
+    return PersonalDataOut(counts=counts, findings=findings)
 
 
 @router.get("/{scan_id}/compare", response_model=ScanCompareOut)

@@ -82,6 +82,25 @@ class ScanRiskOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PersonalDataCountOut(BaseModel):
+    pdn_type: str
+    count: int
+
+
+class PersonalDataFindingOut(BaseModel):
+    pdn_type: str
+    matched_identifier: str
+    file_path: str
+    line_number: int
+
+    model_config = {"from_attributes": True}
+
+
+class PersonalDataOut(BaseModel):
+    counts: list[PersonalDataCountOut]
+    findings: list[PersonalDataFindingOut]
+
+
 class ScanMetricsDiff(BaseModel):
     total_files_delta: int | None
     total_loc_delta: int | None
