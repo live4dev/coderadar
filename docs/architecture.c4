@@ -9,6 +9,7 @@
  *  L3 — Analysis         : view analysisServices
  *  L3 — Git Analytics    : view gitAnalytics
  *  L3 — Scoring & Risks  : view scoringRisks
+ *  L3 — PDN Scanner      : view pdnScanner
  *  L3 — REST API         : view apiLayer
  *  L3 — Data Model       : view dataModel
  */
@@ -146,6 +147,7 @@ model {
         GET /api/v1/scans/{id}/scores
         GET /api/v1/scans/{id}/risks
         GET /api/v1/scans/{id}/developers
+        GET /api/v1/scans/{id}/personal-data
         GET /api/v1/scans/{id}/compare?with={id2}'
       }
 
@@ -161,13 +163,19 @@ model {
         technology 'FastAPI APIRouter'
         description 'GET /api/v1/modules/{id}/ownership'
       }
+
+      component reportsRouter 'Reports Router' {
+        technology 'FastAPI APIRouter'
+        description 'GET /reports/personal-data?project_id=&repository_id=&include_findings=
+        Aggregated PDn report: latest completed scan personal data counts per repository.'
+      }
     }
 
     // ── Scan Orchestrator ───────────────────────
 
     container scanOrchestrator 'Scan Orchestrator' {
       technology 'Python · FastAPI BackgroundTasks'
-      description '7-stage pipeline that coordinates all analysis services.
+      description '8-stage pipeline that coordinates all analysis services.
       Runs asynchronously; scan.status transitions:
       pending → running → completed | failed.
       Each stage persists partial results independently.'
@@ -199,6 +207,11 @@ model {
       component stage6 'Stage 6 · Scoring & Risks' {
         description 'Compute 5-domain quality scorecard + overall score.
         Detect 12 risk types with severity classification.'
+      }
+      component stage6b 'Stage 6b · PDN Scan' {
+        description 'Scan source files for personal data (PDn) identifiers.
+        Uses regex word-boundary matching against pdn_types.yaml.
+        Failures are non-fatal; partial results are persisted.'
       }
       component stage7 'Stage 7 · Complete' {
         description 'Set scan.status = completed.
@@ -337,16 +350,40 @@ model {
       }
     }
 
+    // ── PDN Scanner ─────────────────────────────
+
+    container pdnScanner 'PDN Scanner' {
+      technology 'Python · regex · PyYAML'
+      description 'Scans source files for personal data (PDn) identifiers.
+      Regex-based, deterministic. Skips binary files, test files,
+      and files > 1 MB. Configured via pdn_types.yaml.'
+
+      style { color indigo }
+
+      component pdnConfigLoader 'PDn Config Loader' {
+        technology 'Python · PyYAML'
+        description 'Loads and caches PDn type definitions from config/pdn_types.yaml.
+        Each type has a canonical name and a list of identifier variants.'
+      }
+      component pdnScannerEngine 'PDn Scanner Engine' {
+        technology 'Python · regex'
+        description 'Traverses repo file tree using same skip rules as File Analyzer.
+        Builds word-boundary regex per identifier.
+        Returns (pdn_type, file_path, line_number, matched_identifier) findings.'
+      }
+    }
+
     // ── Database ────────────────────────────────
 
     store database 'Database' {
       technology 'SQLite · SQLAlchemy 2 · Alembic'
-      description '15 ORM tables. WAL mode enabled.
+      description '16 ORM tables. WAL mode enabled.
       Foreign keys enforced. PostgreSQL-ready.
 
       Project → Repository → Scan
       Scan → ScanLanguage, ScanScore, ScanRisk, Dependency
       Scan → DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution
+      Scan → ScanPersonalDataFinding
       Project → Developer → DeveloperIdentity, IdentityOverride
       Repository → Module'
     }
@@ -371,6 +408,7 @@ model {
   coderadar.scanOrchestrator -> coderadar.analysisServices   'Stage 2-4: file / stack / complexity'
   coderadar.scanOrchestrator -> coderadar.gitAnalytics       'Stage 5: git log parsing'
   coderadar.scanOrchestrator -> coderadar.scoringRisks       'Stage 6: scoring + risk detection'
+  coderadar.scanOrchestrator -> coderadar.pdnScanner         'Stage 6b: personal data scan'
   coderadar.scanOrchestrator -[persists]-> coderadar.database 'persist scan results'
 
   // L3 — VCS internal
@@ -383,13 +421,17 @@ model {
   coderadar.gitAnalytics.contributorAggregator -> coderadar.gitAnalytics.gitParser          'consumes commits'
   coderadar.gitAnalytics.contributorAggregator -> coderadar.gitAnalytics.identityNormalizer 'normalises identities'
 
+  // L3 — PDN Scanner internal
+  coderadar.pdnScanner.pdnScannerEngine -> coderadar.pdnScanner.pdnConfigLoader 'loads PDn types'
+
   // L3 — Scan pipeline stage order (informational)
   coderadar.scanOrchestrator.stage1 -> coderadar.scanOrchestrator.stage2 'then'
   coderadar.scanOrchestrator.stage2 -> coderadar.scanOrchestrator.stage3 'then'
   coderadar.scanOrchestrator.stage3 -> coderadar.scanOrchestrator.stage4 'then'
   coderadar.scanOrchestrator.stage4 -> coderadar.scanOrchestrator.stage5 'then'
-  coderadar.scanOrchestrator.stage5 -> coderadar.scanOrchestrator.stage6 'then'
-  coderadar.scanOrchestrator.stage6 -> coderadar.scanOrchestrator.stage7 'then'
+  coderadar.scanOrchestrator.stage5 -> coderadar.scanOrchestrator.stage6  'then'
+  coderadar.scanOrchestrator.stage6 -> coderadar.scanOrchestrator.stage6b 'then'
+  coderadar.scanOrchestrator.stage6b -> coderadar.scanOrchestrator.stage7 'then'
 }
 
 // ─────────────────────────────────────────────
@@ -435,15 +477,17 @@ views {
   // ── L3: Scan Pipeline ───────────────────────
 
   view scanPipeline of coderadar.scanOrchestrator {
-    title 'Scan Pipeline — 7-Stage Orchestration (L3)'
-    description 'Sequential 7-stage pipeline. Each stage persists partial
-    results independently. On failure: scan.status = failed.'
+    title 'Scan Pipeline — 8-Stage Orchestration (L3)'
+    description 'Sequential 8-stage pipeline. Each stage persists partial
+    results independently. Stage 6b (PDN scan) is non-fatal.
+    On failure: scan.status = failed.'
 
     include *
     include coderadar.vcsService
     include coderadar.analysisServices
     include coderadar.gitAnalytics
     include coderadar.scoringRisks
+    include coderadar.pdnScanner
     include coderadar.database
   }
 
@@ -488,12 +532,23 @@ views {
     include *
   }
 
+  // ── L3: PDN Scanner ─────────────────────────
+
+  view pdnScanner of coderadar.pdnScanner {
+    title 'PDN Scanner — Components (L3)'
+    description 'Regex-based personal data scanner.
+    Loads PDn type definitions from config/pdn_types.yaml.
+    Reuses file-analyzer skip rules; non-fatal on error.'
+
+    include *
+  }
+
   // ── L3: REST API ────────────────────────────
 
   view apiLayer of coderadar.api {
     title 'REST API — Routers (L3)'
-    description 'FastAPI routing layer. Five APIRouter groups
-    covering projects, repositories, scans, developers, and modules.'
+    description 'FastAPI routing layer. Six APIRouter groups
+    covering projects, repositories, scans, developers, modules, and reports.'
 
     include *
     include apiClient
