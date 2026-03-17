@@ -387,6 +387,9 @@
       <div class="sidebar-item" id="nav-analytics" onclick="navigate('analytics')">
         <span class="icon">📈</span> Analytics
       </div>
+      <div class="sidebar-item" id="nav-rating" onclick="navigate('rating')">
+        <span class="icon">🏆</span> Rating
+      </div>
       <div class="sidebar-item" id="nav-personal-data-report" onclick="navigate('personal-data-report')">
         <span class="icon">🔐</span> Personal Data
       </div>
@@ -438,7 +441,7 @@
 <script>
     // ── State ──────────────────────────────────────────────────────────────────
     const API = '/api/v1';
-    let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null, projectName: null, repoName: null, devSortBy: 'commits', devSortOrder: 'desc', devSearch: '', projSortBy: 'name', projSortOrder: 'asc', projSearch: '', projHasScans: false, repoSortBy: 'name', repoSortOrder: 'asc', repoSearch: '', repoHasScans: false, pdnReportProjectId: null, pdnReportRepoId: null, pdnReportOnlyWithFindings: false };
+    let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null, projectName: null, repoName: null, devSortBy: 'commits', devSortOrder: 'desc', devSearch: '', projSortBy: 'name', projSortOrder: 'asc', projSearch: '', projHasScans: false, repoSortBy: 'name', repoSortOrder: 'asc', repoSearch: '', repoHasScans: false, pdnReportProjectId: null, pdnReportRepoId: null, pdnReportOnlyWithFindings: false, ratingProjectId: null, ratingMode: 'default' };
 
     // Language color palette
     const LANG_COLORS = [
@@ -468,6 +471,9 @@
       if (segments[0] === 'analytics') {
         return { view: 'analytics', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
       }
+      if (segments[0] === 'rating') {
+        return { view: 'rating', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      }
       if (segments[0] === 'developers') {
         if (segments.length === 1) return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
         const devId = parseInt(segments[1], 10);
@@ -494,6 +500,7 @@
       if (s.view === 'projects') return UI_BASE + '/projects';
       if (s.view === 'personal-data-report') return UI_BASE + '/personal-data';
       if (s.view === 'analytics') return UI_BASE + '/analytics';
+      if (s.view === 'rating') return UI_BASE + '/rating';
       if (s.view === 'developers') return UI_BASE + '/developers';
       if (s.view === 'developer' && s.developerId != null) return `${UI_BASE}/developers/${s.developerId}`;
       if (s.view === 'repos' && s.projectId != null) return `${UI_BASE}/projects/${s.projectId}/repos`;
@@ -598,6 +605,7 @@
         parts.push(`<a onclick="navigate('projects')">Projects</a>`);
       }
       if (state.view === 'analytics') parts.push('<span class="sep">/</span><span>Analytics</span>');
+      if (state.view === 'rating') parts.push('<span class="sep">/</span><span>Rating</span>');
       if (state.view === 'personal-data-report') parts.push('<span class="sep">/</span><span>Personal Data Report</span>');
       if (state.view === 'developers') parts.push('<span class="sep">/</span><span>Developers</span>');
       if (state.view === 'developer' && state.developerId != null) {
@@ -629,7 +637,7 @@
       document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
 
       // Active nav items
-      ['projects','developers-list','analytics','personal-data-report','scans','summary','languages','scores','risks','developers'].forEach(id => {
+      ['projects','developers-list','analytics','rating','personal-data-report','scans','summary','languages','scores','risks','developers'].forEach(id => {
         const el = document.getElementById('nav-' + id);
         if (el) el.classList.toggle('active', false);
       });
@@ -637,6 +645,7 @@
       if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
       if (state.view === 'developers' || state.view === 'developer') document.getElementById('nav-developers-list').classList.add('active');
       if (state.view === 'analytics') document.getElementById('nav-analytics').classList.add('active');
+      if (state.view === 'rating') document.getElementById('nav-rating').classList.add('active');
       if (state.view === 'personal-data-report') document.getElementById('nav-personal-data-report').classList.add('active');
       if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
       if (state.view === 'scan') {
@@ -663,6 +672,7 @@
         else if (state.view === 'developers') await renderDevelopersSummary();
         else if (state.view === 'developer') await renderDeveloperProfile();
         else if (state.view === 'analytics') await renderAnalytics();
+        else if (state.view === 'rating') await renderRating();
         else if (state.view === 'personal-data-report') await renderPersonalDataReport();
       } catch (e) { showError(e); }
     }
@@ -730,6 +740,99 @@
         }],
       };
       treemapChartInstance.setOption(option);
+    }
+
+    // ── Developer Rating ─────────────────────────────────────────────────────
+    async function renderRating() {
+      const projects = await api('/projects');
+      const params = new URLSearchParams({ limit: '200', mode: state.ratingMode });
+      if (state.ratingProjectId != null) params.set('project_id', state.ratingProjectId);
+      const rating = await api('/developers/rating?' + params.toString());
+
+      const projectSelect = `
+        <select onchange="state.ratingProjectId=this.value?parseInt(this.value,10):null; render();"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;min-width:180px">
+          <option value="">All projects</option>
+          ${projects.map(p => `<option value="${p.id}" ${state.ratingProjectId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        </select>`;
+
+      const modeSelect = `
+        <select onchange="state.ratingMode=this.value; render();"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+          ${['default','volume','quality','breadth'].map(m => `<option value="${m}" ${state.ratingMode === m ? 'selected' : ''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
+        </select>`;
+
+      const filterRow = `
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+          <label style="font-size:12px;color:var(--text-muted)">Project:</label>
+          ${projectSelect}
+          <label style="font-size:12px;color:var(--text-muted)">Mode:</label>
+          ${modeSelect}
+        </div>`;
+
+      if (!rating.length) {
+        setMain(`
+          <h1 class="page-title">Developer Rating</h1>
+          <p class="page-subtitle">Composite score based on productivity, consistency, breadth, refactoring and longevity.</p>
+          ${filterRow}
+          <div class="empty"><div class="icon">👥</div><p>No developer data yet. Run scans to populate ratings.</p></div>
+        `);
+        return;
+      }
+
+      const rows = rating.map(d => {
+        const sc = d.score;
+        const cls = sc >= 70 ? 'high' : sc >= 40 ? 'mid' : 'low';
+        const bd = d.breakdown;
+        const bar = (v, color) => `<div style="display:inline-block;width:${Math.round(v*40)}px;height:6px;background:${color};border-radius:3px;vertical-align:middle" title="${(v*100).toFixed(0)}%"></div>`;
+        const breakdown = `
+          <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-muted)">
+            <div style="display:flex;align-items:center;gap:6px">${bar(bd.productivity,'#6366f1')}<span>Prod ${(bd.productivity*100).toFixed(0)}%</span></div>
+            <div style="display:flex;align-items:center;gap:6px">${bar(bd.consistency,'#22c55e')}<span>Cons ${(bd.consistency*100).toFixed(0)}%</span></div>
+            <div style="display:flex;align-items:center;gap:6px">${bar(bd.breadth,'#38bdf8')}<span>Breadth ${(bd.breadth*100).toFixed(0)}%</span></div>
+            <div style="display:flex;align-items:center;gap:6px">${bar(bd.refactoring,'#f59e0b')}<span>Refactor ${(bd.refactoring*100).toFixed(0)}%</span></div>
+            <div style="display:flex;align-items:center;gap:6px">${bar(bd.longevity,'#a78bfa')}<span>Longev ${(bd.longevity*100).toFixed(0)}%</span></div>
+          </div>`;
+        return `<tr class="row-clickable" onclick="navigate('developer', {developerId: ${d.developer_id}})">
+          <td style="font-weight:700;color:var(--text-muted);text-align:center">#${d.rank}</td>
+          <td>
+            <div style="font-weight:600">${esc(d.display_name || '—')}</div>
+            <div style="font-size:11px;color:var(--text-muted)">ID ${d.developer_id}</div>
+          </td>
+          <td>
+            <div class="score-bar-wrap">
+              <div class="score-bar"><div class="score-fill ${cls}" style="width:${sc}%"></div></div>
+              <span class="score-num">${sc.toFixed(1)}</span>
+            </div>
+          </td>
+          <td>${breakdown}</td>
+          <td style="font-size:12px">${esc(d.primary_language || '—')}</td>
+          <td style="font-size:12px">${fmt(d.total_commits)}</td>
+          <td style="font-size:12px">${d.active_days}</td>
+          <td onclick="event.stopPropagation()">
+            <a href="#" onclick="event.preventDefault(); navigate('developer', {developerId: ${d.developer_id}})" class="link-style">Profile →</a>
+          </td>
+        </tr>`;
+      }).join('');
+
+      setMain(`
+        <h1 class="page-title">Developer Rating</h1>
+        <p class="page-subtitle">Composite score: productivity, consistency, breadth, refactoring, longevity. ${rating.length} developer${rating.length !== 1 ? 's' : ''}.</p>
+        ${filterRow}
+        <table>
+          <thead><tr>
+            <th style="width:48px;text-align:center">Rank</th>
+            <th>Developer</th>
+            <th style="min-width:160px">Score</th>
+            <th style="min-width:200px">Breakdown</th>
+            <th>Primary lang</th>
+            <th>Commits</th>
+            <th>Active days</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `);
     }
 
     // ── Personal Data Report ──────────────────────────────────────────────────
