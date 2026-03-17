@@ -1416,7 +1416,6 @@
               <div style="font-size:11px;color:var(--text-muted)">${esc(devEmail)}</div>
               ${extraProfiles}
             </td>
-            <td><span class="tag">${esc(d.project_name || '')}</span></td>
             <td>${fmt(d.total_commits)}</td>
             <td>
               <div class="score-bar-wrap">
@@ -1438,7 +1437,6 @@
         <table>
           <thead><tr>
             <th class="sortable" onclick="devSort('name')" title="Sort by name">Developer${devSortIcon('name')}</th>
-            <th>Project</th>
             <th class="sortable" onclick="devSort('commits')" title="Sort by commits">Commits${devSortIcon('commits')}</th>
             <th>Share</th>
             <th class="sortable" onclick="devSort('insertions')" title="Sort by insertions">Insertions${devSortIcon('insertions')}</th>
