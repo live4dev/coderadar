@@ -7,7 +7,7 @@ class RepositoryCreate(BaseModel):
     project_id: int
     name: str
     url: str
-    provider_type: str  # "bitbucket" | "gitlab"
+    provider_type: str  # "bitbucket" | "gitlab" | "github"
     default_branch: str | None = None
     credentials_username: str | None = None
     credentials_token: str | None = None

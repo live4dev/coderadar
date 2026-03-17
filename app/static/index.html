@@ -385,6 +385,9 @@
       <div class="sidebar-item" id="nav-analytics" onclick="navigate('analytics')">
         <span class="icon">📈</span> Analytics
       </div>
+      <div class="sidebar-item" id="nav-personal-data-report" onclick="navigate('personal-data-report')">
+        <span class="icon">🔐</span> Personal Data
+      </div>
     </div>
     <div class="sidebar-section" id="sidebar-repo-section" style="display:none">
       <div class="sidebar-label">Repository</div>
@@ -429,1024 +432,1170 @@
   </div>
 </div>
 
+</body>
 <script>
-// ── State ──────────────────────────────────────────────────────────────────
-const API = '/api/v1';
-let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null, devSortBy: 'commits', devSortOrder: 'desc', devSearch: '', projSortBy: 'name', projSortOrder: 'asc', projSearch: '', projHasScans: false, repoSortBy: 'name', repoSortOrder: 'asc', repoSearch: '', repoHasScans: false };
+    // ── State ──────────────────────────────────────────────────────────────────
+    const API = '/api/v1';
+    let state = { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null, projectName: null, repoName: null, devSortBy: 'commits', devSortOrder: 'desc', devSearch: '', projSortBy: 'name', projSortOrder: 'asc', projSearch: '', projHasScans: false, repoSortBy: 'name', repoSortOrder: 'asc', repoSearch: '', repoHasScans: false, pdnReportProjectId: null, pdnReportRepoId: null, pdnReportOnlyWithFindings: false };
 
-// Language color palette
-const LANG_COLORS = [
-  '#6366f1','#22c55e','#f59e0b','#38bdf8','#f97316',
-  '#a78bfa','#34d399','#fb7185','#60a5fa','#facc15',
-];
+    // Language color palette
+    const LANG_COLORS = [
+      '#6366f1','#22c55e','#f59e0b','#38bdf8','#f97316',
+      '#a78bfa','#34d399','#fb7185','#60a5fa','#facc15',
+    ];
 
-// ── Router ────────────────────────────────────────────────────────────────
-const UI_BASE = '/ui';
-const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data'];
+    // ── Router ────────────────────────────────────────────────────────────────
+    const UI_BASE = '/ui';
+    const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data'];
 
-function pathToState(pathname) {
-  const raw = pathname.replace(/^\/ui\/?/, '').replace(/\/$/, '');
-  const segments = raw ? raw.split('/').filter(Boolean) : [];
-  const tabFromQuery = () => {
-    const params = new URLSearchParams(location.search);
-    const t = params.get('tab');
-    return t && VALID_TABS.includes(t) ? t : 'summary';
-  };
+    function pathToState(pathname) {
+      const raw = pathname.replace(/^\/ui\/?/, '').replace(/\/$/, '');
+      const segments = raw ? raw.split('/').filter(Boolean) : [];
+      const tabFromQuery = () => {
+        const params = new URLSearchParams(location.search);
+        const t = params.get('tab');
+        return t && VALID_TABS.includes(t) ? t : 'summary';
+      };
 
-  if (segments.length === 0 || (segments.length === 1 && segments[0] === 'projects')) {
-    return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
-  }
-  if (segments[0] === 'analytics') {
-    return { view: 'analytics', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
-  }
-  if (segments[0] === 'developers') {
-    if (segments.length === 1) return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
-    const devId = parseInt(segments[1], 10);
-    if (segments.length === 2 && !isNaN(devId)) return { view: 'developer', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: devId, projectFilter: null };
-    return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
-  }
-  if (segments[0] !== 'projects' || segments.length < 2) return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      if (segments.length === 0 || (segments.length === 1 && segments[0] === 'projects')) {
+        return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      }
+      if (segments.length === 1 && segments[0] === 'personal-data') {
+        return { view: 'personal-data-report', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      }
+      if (segments[0] === 'analytics') {
+        return { view: 'analytics', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      }
+      if (segments[0] === 'developers') {
+        if (segments.length === 1) return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+        const devId = parseInt(segments[1], 10);
+        if (segments.length === 2 && !isNaN(devId)) return { view: 'developer', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: devId, projectFilter: null };
+        return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+      }
+      if (segments[0] !== 'projects' || segments.length < 2) return { view: 'projects', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
 
-  const projectId = parseInt(segments[1], 10);
-  if (isNaN(projectId) || segments.length === 2) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
-  if (segments[2] !== 'repos' || segments.length < 4) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
+      const projectId = parseInt(segments[1], 10);
+      if (isNaN(projectId) || segments.length === 2) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
+      if (segments[2] !== 'repos' || segments.length < 4) return { view: 'repos', projectId, repoId: null, scanId: null, tab: 'summary' };
 
-  const repoId = parseInt(segments[3], 10);
-  if (isNaN(repoId) || segments.length === 4) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
-  if (segments[4] !== 'scans' || segments.length < 6) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+      const repoId = parseInt(segments[3], 10);
+      if (isNaN(repoId) || segments.length === 4) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+      if (segments[4] !== 'scans' || segments.length < 6) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
 
-  const scanId = parseInt(segments[5], 10);
-  if (isNaN(scanId)) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
-  const tab = segments[6] && VALID_TABS.includes(segments[6]) ? segments[6] : tabFromQuery();
-  return { view: 'scan', projectId, repoId, scanId, tab };
-}
-
-function stateToPath(s) {
-  if (s.view === 'projects') return UI_BASE + '/projects';
-  if (s.view === 'analytics') return UI_BASE + '/analytics';
-  if (s.view === 'developers') return UI_BASE + '/developers';
-  if (s.view === 'developer' && s.developerId != null) return `${UI_BASE}/developers/${s.developerId}`;
-  if (s.view === 'repos' && s.projectId != null) return `${UI_BASE}/projects/${s.projectId}/repos`;
-  if (s.view === 'scans' && s.projectId != null && s.repoId != null) return `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans`;
-  if (s.view === 'scan' && s.projectId != null && s.repoId != null && s.scanId != null) {
-    const base = `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans/${s.scanId}`;
-    return (s.tab && s.tab !== 'summary') ? `${base}/${s.tab}` : base;
-  }
-  return UI_BASE + '/projects';
-}
-
-function navigate(view, ids = {}) {
-  Object.assign(state, { view, ...ids });
-  history.pushState(null, '', stateToPath(state));
-  render();
-}
-
-function showTab(tab) {
-  state.tab = tab;
-  history.pushState(null, '', stateToPath(state));
-  renderScanDetail();
-}
-
-// ── API helpers ───────────────────────────────────────────────────────────
-async function api(path, opts = {}) {
-  const res = await fetch(API + path, opts);
-  if (!res.ok) {
-    const txt = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${txt}`);
-  }
-  return res.json();
-}
-
-function fmt(n) {
-  if (n == null) return '—';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
-}
-
-function fmtDate(s) {
-  if (!s) return '—';
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function fmtBytes(n) {
-  if (n == null) return '—';
-  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
-  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
-  return n + ' B';
-}
-
-function tagsChips(tags) {
-  if (!tags || !tags.length) return '—';
-  return '<div class="tags-chips">' + tags.map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + '</div>';
-}
-
-var editTagsModalEntity = null;
-function openEditTagsModal(entityType, entityId, currentTags, entityName) {
-  editTagsModalEntity = { type: entityType, id: entityId };
-  document.getElementById('edit-tags-modal-title').textContent = 'Edit tags' + (entityName ? ': ' + entityName : '');
-  document.getElementById('edit-tags-input').value = (currentTags && currentTags.length) ? currentTags.join(', ') : '';
-  document.getElementById('edit-tags-modal').style.display = 'flex';
-}
-function closeEditTagsModal() {
-  document.getElementById('edit-tags-modal').style.display = 'none';
-  editTagsModalEntity = null;
-}
-async function saveEditTagsModal() {
-  if (!editTagsModalEntity) return;
-  var raw = document.getElementById('edit-tags-input').value || '';
-  var tags = raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  var path = editTagsModalEntity.type === 'project' ? '/projects/' + editTagsModalEntity.id + '/tags'
-    : editTagsModalEntity.type === 'repository' ? '/repositories/' + editTagsModalEntity.id + '/tags'
-    : '/developers/' + editTagsModalEntity.id + '/tags';
-  try {
-    var res = await fetch(API + path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: tags }) });
-    if (!res.ok) throw new Error(await res.text() || res.status);
-    closeEditTagsModal();
-    render();
-  } catch (e) { showError(e); }
-}
-
-function scoreClass(s) {
-  return s >= 70 ? 'high' : s >= 40 ? 'mid' : 'low';
-}
-
-function setMain(html) {
-  document.getElementById('main-content').innerHTML = html;
-}
-
-function showError(err) {
-  setMain(`<div class="error-banner">⚠ ${err.message || err}</div>`);
-}
-
-// ── Breadcrumb & sidebar ──────────────────────────────────────────────────
-function updateNav() {
-  const bc = document.getElementById('breadcrumb');
-  const parts = [];
-
-  if (state.view !== 'projects') {
-    parts.push(`<a onclick="navigate('projects')">Projects</a>`);
-  }
-  if (state.view === 'analytics') parts.push('<span class="sep">/</span><span>Analytics</span>');
-  if (state.view === 'developers') parts.push('<span class="sep">/</span><span>Developers</span>');
-  if (state.view === 'developer' && state.developerId != null) {
-    parts.push('<span class="sep">/</span><a onclick="navigate(\'developers\')">Developers</a>');
-    parts.push('<span class="sep">/</span><span>Profile</span>');
-  }
-
-  const showRepoSection = ['scans', 'scan'].includes(state.view);
-  document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
-  document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
-
-  // Active nav items
-  ['projects','developers-list','analytics','scans','summary','languages','scores','risks','developers'].forEach(id => {
-    const el = document.getElementById('nav-' + id);
-    if (el) el.classList.toggle('active', false);
-  });
-
-  if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
-  if (state.view === 'developers' || state.view === 'developer') document.getElementById('nav-developers-list').classList.add('active');
-  if (state.view === 'analytics') document.getElementById('nav-analytics').classList.add('active');
-  if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
-  if (state.view === 'scan') {
-    const el = document.getElementById('nav-' + state.tab);
-    if (el) el.classList.add('active');
-  }
-
-  bc.innerHTML = parts.join('<span class="sep">/</span>');
-}
-
-// ── Views ─────────────────────────────────────────────────────────────────
-async function render() {
-  if (state.view !== 'analytics' && typeof treemapChartInstance !== 'undefined' && treemapChartInstance) {
-    treemapChartInstance.dispose();
-    treemapChartInstance = null;
-  }
-  updateNav();
-  setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
-  try {
-    if (state.view === 'projects') await renderProjects();
-    else if (state.view === 'repos')  await renderRepos();
-    else if (state.view === 'scans')  await renderScans();
-    else if (state.view === 'scan')   await renderScanDetail();
-    else if (state.view === 'developers') await renderDevelopersSummary();
-    else if (state.view === 'developer') await renderDeveloperProfile();
-    else if (state.view === 'analytics') await renderAnalytics();
-  } catch (e) { showError(e); }
-}
-
-// ── Analytics (treemap) ──────────────────────────────────────────────────
-let treemapChartInstance = null;
-let stateTreemapMetric = 'loc';
-function treemapMetricChange() {
-  const sel = document.getElementById('treemap-metric');
-  if (sel) stateTreemapMetric = sel.value;
-  renderAnalytics();
-}
-function treeToECharts(node) {
-  if (!node) return null;
-  const name = node.name === 'root' ? 'All projects' : node.name;
-  const n = { name, value: Number(node.value) || 0 };
-  if (node.children && node.children.length) n.children = node.children.map(treeToECharts).filter(Boolean);
-  return n;
-}
-async function renderAnalytics() {
-  setMain(`
-    <h1 class="page-title">Analytics</h1>
-    <p class="page-subtitle">Treemap: LOC or files by project and repository (from latest completed scan per repo).</p>
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-      <label for="treemap-metric" style="font-size:13px;color:var(--text-muted)">Size by</label>
-      <select id="treemap-metric" class="modal-input" style="width:120px;margin:0" onchange="treemapMetricChange()">
-        <option value="loc" ${stateTreemapMetric === 'loc' ? 'selected' : ''}>LOC</option>
-        <option value="files" ${stateTreemapMetric === 'files' ? 'selected' : ''}>Files</option>
-      </select>
-    </div>
-    <div id="treemap-chart"></div>
-  `);
-  const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
-  const tree = await api('/analytics/treemap?' + params.toString());
-  const root = treeToECharts(tree);
-  if (!root || root.value === 0) {
-    document.getElementById('treemap-chart').innerHTML = '<div class="empty"><p>No scan data yet. Run scans on repositories to see the treemap.</p></div>';
-    return;
-  }
-  const chartEl = document.getElementById('treemap-chart');
-  if (!window.echarts) {
-    chartEl.innerHTML = '<div class="empty"><p>ECharts failed to load.</p></div>';
-    return;
-  }
-  treemapChartInstance = echarts.init(chartEl, 'dark');
-  const option = {
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', formatter: function(info) {
-      const v = info.value;
-      const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
-      return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
-    }},
-    series: [{
-      type: 'treemap',
-      data: [root],
-      roam: false,
-      nodeClick: 'zoomToNode',
-      breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
-      label: { show: true, formatter: function(info) { return info.name; } },
-      itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
-      levels: [
-        { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
-        { itemStyle: { borderColor: 'var(--border)' } },
-      ],
-    }],
-  };
-  treemapChartInstance.setOption(option);
-}
-
-// ── Projects ──────────────────────────────────────────────────────────────
-function projSort(col) {
-  if (state.projSortBy === col) state.projSortOrder = state.projSortOrder === 'asc' ? 'desc' : 'asc';
-  else { state.projSortBy = col; state.projSortOrder = (col === 'name' || col === 'id' ? 'asc' : 'desc'); }
-  render();
-}
-function projSortIcon(col) {
-  if (state.projSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
-  return state.projSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
-}
-let projSearchDebounce = null;
-function projSearchInput() {
-  state.projSearch = document.getElementById('proj-search').value;
-  if (projSearchDebounce) clearTimeout(projSearchDebounce);
-  projSearchDebounce = setTimeout(function() { projSearchDebounce = null; render(); }, 280);
-}
-async function renderProjects() {
-  const params = new URLSearchParams();
-  params.set('sort_by', state.projSortBy);
-  params.set('order', state.projSortOrder);
-  if (state.projSearch && state.projSearch.trim()) params.set('q', state.projSearch.trim());
-  if (state.projHasScans) params.set('has_scans', 'true');
-  const query = params.toString();
-  const projects = await api('/projects/summary' + (query ? '?' + query : ''));
-  const hasFilters = (state.projSearch && state.projSearch.trim()) || state.projHasScans;
-  let html = `
-    <div class="page-title">Projects</div>
-    <div class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''}</div>
-    <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
-      <input type="text" id="proj-search" placeholder="Search by name or description…" value="${esc(state.projSearch)}" oninput="projSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:240px">
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
-        <input type="checkbox" ${state.projHasScans ? 'checked' : ''} onchange="state.projHasScans=this.checked; render();">
-        With scans only
-      </label>
-    </div>
-  `;
-
-  if (!projects.length) {
-    html += `<div class="empty"><div class="icon">📂</div><p>${hasFilters ? 'No projects match your filters.' : 'No projects yet. Add one via the API.'}</p></div>`;
-  } else {
-    const rows = projects.map(p => {
-      const hasScans = p.repos_with_completed_scan > 0;
-      const scanHealth = p.repo_count > 0 ? p.repos_with_completed_scan + '/' + p.repo_count : '—';
-      const scoreCls = p.avg_score != null ? scoreClass(p.avg_score) : '';
-      const tags = p.tags || [];
-      return `<tr style="cursor:pointer" onclick="navigate('repos', {projectId: ${p.id}})">
-        <td>
-          <div style="font-weight:600">${esc(p.name)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${esc(p.description || 'No description')}</div>
-        </td>
-        <td style="font-size:12px;color:var(--text-muted)">${p.id}</td>
-        <td>${p.repo_count}</td>
-        <td>${scanHealth}</td>
-        <td>${hasScans && p.total_loc != null ? fmt(p.total_loc) : '—'}</td>
-        <td>${hasScans && p.total_files != null ? fmt(p.total_files) : '—'}</td>
-        <td>${p.avg_score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${p.avg_score}%"></div></div><span class="score-num">${p.avg_score.toFixed(0)}</span></div>` : '—'}</td>
-        <td style="font-size:11px;color:var(--text-muted)">${p.last_scan_at ? fmtDate(p.last_scan_at) : '—'}</td>
-        <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('project', ${p.id}, ${JSON.stringify(tags)}, ${JSON.stringify(p.name)})">Edit tags</button></td>
-        <td><span class="tag accent">View repos →</span></td>
-      </tr>`;
-    }).join('');
-    html += `
-    <table>
-      <thead><tr>
-        <th class="sortable" onclick="projSort('name')" title="Sort by name">Project${projSortIcon('name')}</th>
-        <th class="sortable" onclick="projSort('id')" title="Sort by ID">ID${projSortIcon('id')}</th>
-        <th class="sortable" onclick="projSort('repo_count')" title="Sort by repos">Repos${projSortIcon('repo_count')}</th>
-        <th class="sortable" onclick="projSort('scanned')" title="Sort by scanned">Scanned${projSortIcon('scanned')}</th>
-        <th class="sortable" onclick="projSort('loc')" title="Sort by LOC">LOC${projSortIcon('loc')}</th>
-        <th class="sortable" onclick="projSort('files')" title="Sort by files">Files${projSortIcon('files')}</th>
-        <th class="sortable" onclick="projSort('avg_score')" title="Sort by score">Avg score${projSortIcon('avg_score')}</th>
-        <th class="sortable" onclick="projSort('last_scan_at')" title="Sort by last scan">Last scan${projSortIcon('last_scan_at')}</th>
-        <th>Tags</th>
-        <th></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  }
-  setMain(html);
-}
-
-// ── Repositories ──────────────────────────────────────────────────────────
-function repoSort(col) {
-  if (state.repoSortBy === col) state.repoSortOrder = state.repoSortOrder === 'asc' ? 'desc' : 'asc';
-  else { state.repoSortBy = col; state.repoSortOrder = (col === 'name' || col === 'id' ? 'asc' : 'desc'); }
-  render();
-}
-function repoSortIcon(col) {
-  if (state.repoSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
-  return state.repoSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
-}
-let repoSearchDebounce = null;
-function repoSearchInput() {
-  state.repoSearch = document.getElementById('repo-search').value;
-  if (repoSearchDebounce) clearTimeout(repoSearchDebounce);
-  repoSearchDebounce = setTimeout(function() { repoSearchDebounce = null; render(); }, 280);
-}
-async function renderRepos() {
-  const params = new URLSearchParams();
-  params.set('sort_by', state.repoSortBy);
-  params.set('order', state.repoSortOrder);
-  if (state.repoSearch && state.repoSearch.trim()) params.set('q', state.repoSearch.trim());
-  if (state.repoHasScans) params.set('has_scans', 'true');
-  const query = params.toString();
-  const [project, allRepos] = await Promise.all([
-    api('/projects/' + state.projectId),
-    api('/projects/' + state.projectId + '/repositories/with-latest-scan' + (query ? '?' + query : '')),
-  ]);
-  const hasFilters = (state.repoSearch && state.repoSearch.trim()) || state.repoHasScans;
-  let html = `
-    <div class="page-title">${esc(project.name)}</div>
-    <div class="page-subtitle">${esc(project.description || '')} · ${allRepos.length} repositor${allRepos.length !== 1 ? 'ies' : 'y'}</div>
-    <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
-      <input type="text" id="repo-search" placeholder="Search by name or URL…" value="${esc(state.repoSearch)}" oninput="repoSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:240px">
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
-        <input type="checkbox" ${state.repoHasScans ? 'checked' : ''} onchange="state.repoHasScans=this.checked; render();">
-        With scans only
-      </label>
-    </div>
-  `;
-
-  if (!allRepos.length) {
-    html += `<div class="empty"><div class="icon">📦</div><p>${hasFilters ? 'No repositories match your filters.' : 'No repositories. Add one via the API or create a scan with local_scan.py.'}</p></div>`;
-  } else {
-    const rows = allRepos.map(r => {
-      const ls = r.latest_scan;
-      const lastUpdated = ls && (ls.completed_at || ls.started_at);
-      const score = ls && ls.overall_score != null ? ls.overall_score : null;
-      const scoreCls = score != null ? scoreClass(score) : '';
-      const tags = r.tags || [];
-      return `<tr style="cursor:pointer" onclick="navigate('scans', {projectId: ${state.projectId}, repoId: ${r.id}})">
-        <td>
-          <div style="font-weight:600">${esc(r.name)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${esc(r.provider_type)}${r.default_branch ? ' · ' + esc(r.default_branch) : ''}</div>
-        </td>
-        <td>${ls && ls.total_loc != null ? fmt(ls.total_loc) : '—'}</td>
-        <td>${ls && ls.total_files != null ? fmt(ls.total_files) : '—'}</td>
-        <td style="text-transform:capitalize">${ls && ls.project_type ? esc(String(ls.project_type).replace(/_/g, ' ')) : '—'}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${fmtDate(lastUpdated)}</td>
-        <td>${ls && ls.primary_language ? esc(ls.primary_language) : '—'}</td>
-        <td>${score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${score}%"></div></div><span class="score-num">${score.toFixed(0)}</span></div>` : '—'}</td>
-        <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('repository', ${r.id}, ${JSON.stringify(tags)}, ${JSON.stringify(r.name)})">Edit tags</button></td>
-      </tr>`;
-    }).join('');
-    html += `
-    <table>
-      <thead><tr>
-        <th class="sortable" onclick="repoSort('name')" title="Sort by name">Repository${repoSortIcon('name')}</th>
-        <th class="sortable" onclick="repoSort('loc')" title="Sort by LOC">Lines of code${repoSortIcon('loc')}</th>
-        <th class="sortable" onclick="repoSort('files')" title="Sort by files">Files${repoSortIcon('files')}</th>
-        <th class="sortable" onclick="repoSort('project_type')" title="Sort by project type">Project type${repoSortIcon('project_type')}</th>
-        <th class="sortable" onclick="repoSort('last_updated')" title="Sort by last updated">Last updated${repoSortIcon('last_updated')}</th>
-        <th class="sortable" onclick="repoSort('primary_language')" title="Sort by language">Primary language${repoSortIcon('primary_language')}</th>
-        <th class="sortable" onclick="repoSort('score')" title="Sort by score">Score${repoSortIcon('score')}</th>
-        <th>Tags</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  }
-  setMain(html);
-}
-
-// ── Scans list ────────────────────────────────────────────────────────────
-async function renderScans() {
-  const [repo, scans] = await Promise.all([
-    api('/repositories/' + state.repoId),
-    api('/repositories/' + state.repoId + '/scans'),
-  ]);
-
-  let html = `
-    <div class="section-header">
-      <div>
-        <div class="page-title">${esc(repo.name)}</div>
-        <div class="page-subtitle">${esc(repo.url)}</div>
-      </div>
-      <button class="btn btn-primary" id="scan-btn" onclick="triggerScan()">▶ Run Scan</button>
-    </div>
-  `;
-
-  if (!scans.length) {
-    html += `<div class="empty"><div class="icon">🔍</div><p>No scans yet. Click "Run Scan" to start.</p></div>`;
-  } else {
-    html += `<table>
-      <thead><tr>
-        <th>ID</th><th>Branch</th><th>Status</th>
-        <th>Files</th><th>LOC</th><th>Language</th>
-        <th>Started</th><th></th>
-      </tr></thead><tbody>`;
-    for (const s of scans) {
-      const scanNav = "navigate('scan', {projectId: " + state.projectId + ", repoId: " + state.repoId + ", scanId: " + s.id + ", tab:'summary'})";
-      html += `<tr style="cursor:pointer" onclick="${scanNav}">
-        <td><a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">#${s.id}</a></td>
-        <td><code style="font-size:12px">${esc(s.branch)}</code></td>
-        <td><span class="status ${s.status}">${esc(s.status)}</span></td>
-        <td>${fmt(s.total_files)}</td>
-        <td>${fmt(s.total_loc)}</td>
-        <td>${esc(s.primary_language || '—')}</td>
-        <td>${fmtDate(s.started_at)}</td>
-        <td>
-          <a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">View →</a>
-        </td>
-      </tr>`;
+      const scanId = parseInt(segments[5], 10);
+      if (isNaN(scanId)) return { view: 'scans', projectId, repoId, scanId: null, tab: 'summary' };
+      const tab = segments[6] && VALID_TABS.includes(segments[6]) ? segments[6] : tabFromQuery();
+      return { view: 'scan', projectId, repoId, scanId, tab };
     }
-    html += '</tbody></table>';
-  }
-  setMain(html);
-}
 
-async function triggerScan() {
-  const btn = document.getElementById('scan-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Starting…'; }
-  try {
-    const result = await api('/repositories/' + state.repoId + '/scan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
-    // Poll for completion
-    await pollScan(result.scan_id || result.id);
-    await renderScans();
-  } catch (e) {
-    showError(e);
-  }
-}
+    function stateToPath(s) {
+      if (s.view === 'projects') return UI_BASE + '/projects';
+      if (s.view === 'personal-data-report') return UI_BASE + '/personal-data';
+      if (s.view === 'analytics') return UI_BASE + '/analytics';
+      if (s.view === 'developers') return UI_BASE + '/developers';
+      if (s.view === 'developer' && s.developerId != null) return `${UI_BASE}/developers/${s.developerId}`;
+      if (s.view === 'repos' && s.projectId != null) return `${UI_BASE}/projects/${s.projectId}/repos`;
+      if (s.view === 'scans' && s.projectId != null && s.repoId != null) return `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans`;
+      if (s.view === 'scan' && s.projectId != null && s.repoId != null && s.scanId != null) {
+        const base = `${UI_BASE}/projects/${s.projectId}/repos/${s.repoId}/scans/${s.scanId}`;
+        return (s.tab && s.tab !== 'summary') ? `${base}/${s.tab}` : base;
+      }
+      return UI_BASE + '/projects';
+    }
 
-async function pollScan(scanId) {
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 3000));
-    const scan = await api('/scans/' + scanId);
-    if (scan.status === 'completed' || scan.status === 'failed') return scan;
-    // Update button
-    const btn = document.getElementById('scan-btn');
-    if (btn) btn.innerHTML = '<span class="spinner"></span> Scanning…';
-  }
-}
+    function navigate(view, ids = {}) {
+      Object.assign(state, { view, ...ids });
+      history.pushState(null, '', stateToPath(state));
+      render();
+    }
 
-// ── Scan Detail ───────────────────────────────────────────────────────────
-async function renderScanDetail() {
-  updateNav();
-  setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+    function showTab(tab) {
+      state.tab = tab;
+      history.pushState(null, '', stateToPath(state));
+      renderScanDetail();
+    }
 
-  try {
-    const scan = await api('/scans/' + state.scanId + '/summary');
+    // ── API helpers ───────────────────────────────────────────────────────────
+    async function api(path, opts = {}) {
+      const res = await fetch(API + path, opts);
+      if (!res.ok) {
+        const txt = await res.text().catch(() => res.statusText);
+        throw new Error(`${res.status}: ${txt}`);
+      }
+      return res.json();
+    }
 
-    let content = '';
-    if (state.tab === 'summary')        content = await buildSummaryTab(scan);
-    if (state.tab === 'languages')      content = await buildLanguagesTab();
-    if (state.tab === 'scores')         content = await buildScoresTab(scan);
-    if (state.tab === 'risks')          content = await buildRisksTab();
-    if (state.tab === 'developers')     content = await buildDevelopersTab();
-    if (state.tab === 'personal-data')  content = await buildPersonalDataTab(scan);
+    function fmt(n) {
+      if (n == null) return '—';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+      return String(n);
+    }
 
-    const tabLabels = { summary: 'Summary', languages: 'Languages', scores: 'Scores', risks: 'Risks', developers: 'Developers', 'personal-data': 'Personal Data' };
-    const tabs = ['summary','languages','scores','risks','developers','personal-data']
-      .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">${tabLabels[t]}</div>`).join('');
+    function fmtDate(s) {
+      if (!s) return '—';
+      return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
 
-    const failedBlock = scan.status === 'failed' ? `
-      <div class="error-banner" style="margin-bottom:20px">
-        <div style="font-weight:600;margin-bottom:8px">Scan failed</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${scan.completed_at ? 'Failed at ' + fmtDate(scan.completed_at) : ''}</div>
-        <pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:300px;overflow:auto">${esc(scan.error_message || 'No error message recorded.')}</pre>
-      </div>` : '';
+    function fmtBytes(n) {
+      if (n == null) return '—';
+      if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+      if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+      return n + ' B';
+    }
 
-    setMain(`
-      <div class="page-title">Scan #${state.scanId}</div>
-      <div class="page-subtitle">
-        <span class="status ${scan.status}">${scan.status}</span>
-        &nbsp;·&nbsp; Branch: <code>${esc(scan.branch)}</code>
-        ${scan.commit_sha ? '&nbsp;·&nbsp; <code style="font-size:11px">' + esc(scan.commit_sha.slice(0,8)) + '</code>' : ''}
-        &nbsp;·&nbsp; ${fmtDate(scan.started_at)}
-      </div>
-      ${failedBlock}
-      <div class="tabs">${tabs}</div>
-      ${content}
-    `);
-  } catch(e) { showError(e); }
-}
+    function tagsChips(tags) {
+      if (!tags || !tags.length) return '—';
+      return '<div class="tags-chips">' + tags.map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + '</div>';
+    }
 
-// ── Summary tab ───────────────────────────────────────────────────────────
-async function buildSummaryTab(scan) {
-  return `
-    <div class="stats-row">
-      <div class="stat-box">
-        <div class="stat-label">Files</div>
-        <div class="stat-value">${fmt(scan.total_files)}</div>
-        <div class="stat-sub">${fmt(scan.file_count_source)} source · ${fmt(scan.file_count_test)} test</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Lines of Code</div>
-        <div class="stat-value">${fmt(scan.total_loc)}</div>
-        <div class="stat-sub">avg ${Math.round(scan.avg_file_loc || 0)} per file</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Size</div>
-        <div class="stat-value">${fmtBytes(scan.size_bytes)}</div>
-        <div class="stat-sub">${fmt(scan.large_files_count)} large files</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Project type</div>
-        <div class="stat-value" style="font-size:15px;padding-top:4px">${esc(scan.project_type || '—')}</div>
-        <div class="stat-sub">${esc(scan.primary_language || '—')}</div>
-      </div>
-    </div>
-  `;
-}
+    var editTagsModalEntity = null;
+    function openEditTagsModal(entityType, entityId, currentTags, entityName) {
+      editTagsModalEntity = { type: entityType, id: entityId };
+      document.getElementById('edit-tags-modal-title').textContent = 'Edit tags' + (entityName ? ': ' + entityName : '');
+      document.getElementById('edit-tags-input').value = (currentTags && currentTags.length) ? currentTags.join(', ') : '';
+      document.getElementById('edit-tags-modal').style.display = 'flex';
+    }
+    function closeEditTagsModal() {
+      document.getElementById('edit-tags-modal').style.display = 'none';
+      editTagsModalEntity = null;
+    }
+    async function saveEditTagsModal() {
+      if (!editTagsModalEntity) return;
+      var raw = document.getElementById('edit-tags-input').value || '';
+      var tags = raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var path = editTagsModalEntity.type === 'project' ? '/projects/' + editTagsModalEntity.id + '/tags'
+        : editTagsModalEntity.type === 'repository' ? '/repositories/' + editTagsModalEntity.id + '/tags'
+        : '/developers/' + editTagsModalEntity.id + '/tags';
+      try {
+        var res = await fetch(API + path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: tags }) });
+        if (!res.ok) throw new Error(await res.text() || res.status);
+        closeEditTagsModal();
+        render();
+      } catch (e) { showError(e); }
+    }
 
-// ── Languages tab ─────────────────────────────────────────────────────────
-async function buildLanguagesTab() {
-  const langs = await api('/scans/' + state.scanId + '/languages');
-  if (!langs.length) return '<div class="empty"><div class="icon">🌐</div><p>No language data.</p></div>';
+    function scoreClass(s) {
+      return s >= 70 ? 'high' : s >= 40 ? 'mid' : 'low';
+    }
 
-  const segments = langs.map((l, i) =>
-    `<div class="lang-segment" style="width:${l.percentage.toFixed(1)}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`
-  ).join('');
+    function setMain(html) {
+      document.getElementById('main-content').innerHTML = html;
+    }
 
-  const dots = langs.map((l, i) =>
-    `<span><span class="lang-dot" style="background:${LANG_COLORS[i % LANG_COLORS.length]}"></span>${esc(l.language)} ${l.percentage.toFixed(1)}%</span>`
-  ).join('');
+    function showError(err) {
+      setMain(`<div class="error-banner">⚠ ${err.message || err}</div>`);
+    }
 
-  let rows = langs.map(l => `<tr>
-    <td>${esc(l.language)}</td>
-    <td>${fmt(l.file_count)}</td>
-    <td>${fmt(l.loc)}</td>
-    <td>
-      <div class="score-bar-wrap">
-        <div class="score-bar"><div class="score-fill high" style="width:${l.percentage.toFixed(1)}%"></div></div>
-        <span class="score-num" style="font-size:12px">${l.percentage.toFixed(1)}%</span>
-      </div>
-    </td>
-  </tr>`).join('');
+    // ── Breadcrumb & sidebar ──────────────────────────────────────────────────
+    function updateNav() {
+      const bc = document.getElementById('breadcrumb');
+      const parts = [];
 
-  return `
-    <div class="lang-bar">${segments}</div>
-    <div class="lang-colors" style="margin-bottom:24px">${dots}</div>
-    <table>
-      <thead><tr><th>Language</th><th>Files</th><th>LOC</th><th>Share</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
+      if (state.view !== 'projects') {
+        parts.push(`<a onclick="navigate('projects')">Projects</a>`);
+      }
+      if (state.view === 'analytics') parts.push('<span class="sep">/</span><span>Analytics</span>');
+      if (state.view === 'personal-data-report') parts.push('<span class="sep">/</span><span>Personal Data Report</span>');
+      if (state.view === 'developers') parts.push('<span class="sep">/</span><span>Developers</span>');
+      if (state.view === 'developer' && state.developerId != null) {
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'developers\')">Developers</a>');
+        parts.push('<span class="sep">/</span><span>Profile</span>');
+      }
+      if (state.view === 'repos' && state.projectId != null) {
+        const pName = state.projectName != null ? esc(state.projectName) : '…';
+        parts.push('<span class="sep">/</span><span>' + pName + '</span>');
+      }
+      if (state.view === 'scans' && state.projectId != null && state.repoId != null) {
+        const pName = state.projectName != null ? esc(state.projectName) : '…';
+        const rName = state.repoName != null ? esc(state.repoName) : '…';
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'repos\', { projectId: ' + state.projectId + ' })">' + pName + '</a>');
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'scans\', { projectId: ' + state.projectId + ', repoId: ' + state.repoId + ' })">' + rName + '</a>');
+        parts.push('<span class="sep">/</span><span>Scans</span>');
+      }
+      if (state.view === 'scan' && state.projectId != null && state.repoId != null && state.scanId != null) {
+        const pName = state.projectName != null ? esc(state.projectName) : '…';
+        const rName = state.repoName != null ? esc(state.repoName) : '…';
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'repos\', { projectId: ' + state.projectId + ' })">' + pName + '</a>');
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'scans\', { projectId: ' + state.projectId + ', repoId: ' + state.repoId + ' })">' + rName + '</a>');
+        parts.push('<span class="sep">/</span><a onclick="navigate(\'scans\', { projectId: ' + state.projectId + ', repoId: ' + state.repoId + ' })">Scans</a>');
+        parts.push('<span class="sep">/</span><span>Scan #' + state.scanId + '</span>');
+      }
 
-// ── Scores tab ────────────────────────────────────────────────────────────
-async function buildScoresTab(scan) {
-  const scores = await api('/scans/' + state.scanId + '/scores');
-  const overall = scores.find(s => s.domain === 'overall');
+      const showRepoSection = ['scans', 'scan'].includes(state.view);
+      document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
+      document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
 
-  let rows = scores.filter(s => s.domain !== 'overall').map(s => {
-    const cls = scoreClass(s.score);
-    return `<tr>
-      <td style="text-transform:capitalize;font-weight:500">${esc(s.domain.replace(/_/g,' '))}</td>
-      <td style="width:60%">
-        <div class="score-bar-wrap">
-          <div class="score-bar"><div class="score-fill ${cls}" style="width:${s.score}%"></div></div>
-          <span class="score-num" style="color:var(--${cls === 'high' ? 'green' : cls === 'mid' ? 'yellow' : 'red'})">${s.score.toFixed(1)}</span>
+      // Active nav items
+      ['projects','developers-list','analytics','personal-data-report','scans','summary','languages','scores','risks','developers'].forEach(id => {
+        const el = document.getElementById('nav-' + id);
+        if (el) el.classList.toggle('active', false);
+      });
+
+      if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
+      if (state.view === 'developers' || state.view === 'developer') document.getElementById('nav-developers-list').classList.add('active');
+      if (state.view === 'analytics') document.getElementById('nav-analytics').classList.add('active');
+      if (state.view === 'personal-data-report') document.getElementById('nav-personal-data-report').classList.add('active');
+      if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
+      if (state.view === 'scan') {
+        const el = document.getElementById('nav-' + state.tab);
+        if (el) el.classList.add('active');
+      }
+
+      bc.innerHTML = parts.join('<span class="sep">/</span>');
+    }
+
+    // ── Views ─────────────────────────────────────────────────────────────────
+    async function render() {
+      if (state.view !== 'analytics' && typeof treemapChartInstance !== 'undefined' && treemapChartInstance) {
+        treemapChartInstance.dispose();
+        treemapChartInstance = null;
+      }
+      updateNav();
+      setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+      try {
+        if (state.view === 'projects') await renderProjects();
+        else if (state.view === 'repos')  await renderRepos();
+        else if (state.view === 'scans')  await renderScans();
+        else if (state.view === 'scan')   await renderScanDetail();
+        else if (state.view === 'developers') await renderDevelopersSummary();
+        else if (state.view === 'developer') await renderDeveloperProfile();
+        else if (state.view === 'analytics') await renderAnalytics();
+        else if (state.view === 'personal-data-report') await renderPersonalDataReport();
+      } catch (e) { showError(e); }
+    }
+
+    // ── Analytics (treemap) ──────────────────────────────────────────────────
+    let treemapChartInstance = null;
+    let stateTreemapMetric = 'loc';
+    function treemapMetricChange() {
+      const sel = document.getElementById('treemap-metric');
+      if (sel) stateTreemapMetric = sel.value;
+      renderAnalytics();
+    }
+    function treeToECharts(node) {
+      if (!node) return null;
+      const name = node.name === 'root' ? 'All projects' : node.name;
+      const n = { name, value: Number(node.value) || 0 };
+      if (node.children && node.children.length) n.children = node.children.map(treeToECharts).filter(Boolean);
+      return n;
+    }
+    async function renderAnalytics() {
+      setMain(`
+        <h1 class="page-title">Analytics</h1>
+        <p class="page-subtitle">Treemap: LOC or files by project and repository (from latest completed scan per repo).</p>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+          <label for="treemap-metric" style="font-size:13px;color:var(--text-muted)">Size by</label>
+          <select id="treemap-metric" class="modal-input" style="width:120px;margin:0" onchange="treemapMetricChange()">
+            <option value="loc" ${stateTreemapMetric === 'loc' ? 'selected' : ''}>LOC</option>
+            <option value="files" ${stateTreemapMetric === 'files' ? 'selected' : ''}>Files</option>
+          </select>
         </div>
-      </td>
-    </tr>`;
-  }).join('');
+        <div id="treemap-chart"></div>
+      `);
+      const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
+      const tree = await api('/analytics/treemap?' + params.toString());
+      const root = treeToECharts(tree);
+      if (!root || root.value === 0) {
+        document.getElementById('treemap-chart').innerHTML = '<div class="empty"><p>No scan data yet. Run scans on repositories to see the treemap.</p></div>';
+        return;
+      }
+      const chartEl = document.getElementById('treemap-chart');
+      if (!window.echarts) {
+        chartEl.innerHTML = '<div class="empty"><p>ECharts failed to load.</p></div>';
+        return;
+      }
+      treemapChartInstance = echarts.init(chartEl, 'dark');
+      const option = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'item', formatter: function(info) {
+          const v = info.value;
+          const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
+          return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
+        }},
+        series: [{
+          type: 'treemap',
+          data: [root],
+          roam: false,
+          nodeClick: 'zoomToNode',
+          breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
+          label: { show: true, formatter: function(info) { return info.name; } },
+          itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
+          levels: [
+            { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
+            { itemStyle: { borderColor: 'var(--border)' } },
+          ],
+        }],
+      };
+      treemapChartInstance.setOption(option);
+    }
 
-  const ov = overall ? overall.score : 0;
-  const ovCls = scoreClass(ov);
+    // ── Personal Data Report ──────────────────────────────────────────────────
+    async function renderPersonalDataReport() {
+      setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+      const params = new URLSearchParams();
+      if (state.pdnReportProjectId != null) params.set('project_id', state.pdnReportProjectId);
+      if (state.pdnReportRepoId != null) params.set('repository_id', state.pdnReportRepoId);
+      const query = params.toString();
+      let projects = [];
+      let repos = [];
+      let report = { entries: [] };
+      try {
+        [projects, report] = await Promise.all([
+          api('/projects'),
+          api('/reports/personal-data' + (query ? '?' + query : '')),
+        ]);
+        if (state.pdnReportProjectId != null) {
+          repos = await api('/projects/' + state.pdnReportProjectId + '/repositories');
+        }
+      } catch (e) {
+        showError(e);
+        return;
+      }
+      let entries = report.entries || [];
+      if (state.pdnReportOnlyWithFindings) {
+        entries = entries.filter(function (e) {
+          const total = (e.counts || []).reduce(function (sum, c) { return sum + c.count; }, 0);
+          return total > 0;
+        });
+      }
+      const projectIdsWithFindings = new Set();
+      let reposWithFindingsCount = 0;
+      let totalFindings = 0;
+      entries.forEach(function (e) {
+        const total = (e.counts || []).reduce(function (sum, c) { return sum + c.count; }, 0);
+        if (total > 0) {
+          projectIdsWithFindings.add(e.project_id);
+          reposWithFindingsCount += 1;
+          totalFindings += total;
+        }
+      });
+      const filterRow = `
+        <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px;align-items:center">
+          <label style="font-size:12px;color:var(--text-muted)">Project:</label>
+          <select id="pdn-report-project" onchange="state.pdnReportProjectId=this.value?parseInt(this.value,10):null; state.pdnReportRepoId=null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;min-width:180px">
+            <option value="">All projects</option>
+            ${(projects || []).map(function (p) { return '<option value="' + p.id + '" ' + (state.pdnReportProjectId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>'; }).join('')}
+          </select>
+          ${state.pdnReportProjectId != null ? `
+          <label style="font-size:12px;color:var(--text-muted)">Repository:</label>
+          <select id="pdn-report-repo" onchange="state.pdnReportRepoId=this.value?parseInt(this.value,10):null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;min-width:180px">
+            <option value="">All repositories</option>
+            ${(repos || []).map(function (r) { return '<option value="' + r.id + '" ' + (state.pdnReportRepoId === r.id ? 'selected' : '') + '>' + esc(r.name) + '</option>'; }).join('')}
+          </select>
+          ` : ''}
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
+            <input type="checkbox" ${state.pdnReportOnlyWithFindings ? 'checked' : ''} onchange="state.pdnReportOnlyWithFindings=this.checked; render();">
+            Only with findings
+          </label>
+        </div>`;
+      const statsRow = `
+        <div class="stats-row" style="margin-bottom:24px">
+          <div class="stat-box">
+            <div class="stat-label">Projects with findings</div>
+            <div class="stat-value">${projectIdsWithFindings.size}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Repositories with findings</div>
+            <div class="stat-value">${reposWithFindingsCount}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Total findings</div>
+            <div class="stat-value">${totalFindings}</div>
+            <div class="stat-sub">across latest scan per repo</div>
+          </div>
+        </div>`;
+      const rows = entries.map(function (e) {
+        const total = (e.counts || []).reduce(function (sum, c) { return sum + c.count; }, 0);
+        const countTags = (e.counts || []).map(function (c) { return '<span class="tag">' + esc(c.pdn_type) + ': ' + c.count + '</span>'; }).join(' ');
+        const scanDate = e.scan_completed_at || e.scan_started_at;
+        const goScan = "navigate('scan', { projectId: " + e.project_id + ", repoId: " + e.repository_id + ", scanId: " + e.scan_id + ", tab: 'personal-data' })";
+        const sourceLink = e.repository_source_url ? '<a href="' + esc(e.repository_source_url) + '" target="_blank" rel="noopener noreferrer" class="link-style">Open in source</a>' : '—';
+        return '<tr><td>' + esc(e.project_name) + '</td><td>' + esc(e.repository_name) + '</td><td style="font-size:12px;color:var(--text-muted)">' + fmtDate(scanDate) + ' <a href="#" onclick="event.preventDefault();' + goScan + '" class="link-style">#' + e.scan_id + '</a></td><td>' + total + '</td><td><div style="display:flex;flex-wrap:wrap;gap:4px">' + (countTags || '—') + '</div></td><td>' + sourceLink + '</td><td><button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="' + goScan + '">View scan →</button></td></tr>';
+      }).join('');
+      const tableHtml = entries.length ? `
+        <table>
+          <thead><tr>
+            <th>Project</th><th>Repository</th><th>Last scan</th><th>Findings</th><th>By type</th><th>Source</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>` : '<div class="empty"><div class="icon">📋</div><p>No repositories with completed scans match the filters. Run scans and complete them to see personal data findings here.</p></div>';
+      setMain(`
+        <h1 class="page-title">Personal Data Report</h1>
+        <p class="page-subtitle">Findings by project and repository (latest completed scan per repo).</p>
+        ${filterRow}
+        ${statsRow}
+        ${tableHtml}
+      `);
+    }
 
-  return `
-    <div style="display:flex;align-items:center;gap:24px;margin-bottom:28px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
-      <div style="text-align:center;min-width:80px">
-        <div style="font-size:42px;font-weight:800;color:var(--${ovCls === 'high' ? 'green' : ovCls === 'mid' ? 'yellow' : 'red'})">${ov.toFixed(0)}</div>
-        <div style="font-size:12px;color:var(--text-muted)">Overall</div>
-      </div>
-      <div style="flex:1">
-        <div class="score-bar" style="height:10px"><div class="score-fill ${ovCls}" style="width:${ov}%"></div></div>
-      </div>
-    </div>
-    <table>
-      <thead><tr><th>Domain</th><th>Score</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ── Risks tab ─────────────────────────────────────────────────────────────
-async function buildRisksTab() {
-  const risks = await api('/scans/' + state.scanId + '/risks');
-  if (!risks.length) return `<div class="empty"><div class="icon">✅</div><p>No risks detected.</p></div>`;
-
-  const counts = {};
-  risks.forEach(r => counts[r.severity] = (counts[r.severity] || 0) + 1);
-
-  const summary = ['critical','high','medium','low'].filter(s => counts[s]).map(s =>
-    `<div class="stat-box" style="min-width:100px">
-      <div class="stat-label">${s}</div>
-      <div class="stat-value" style="font-size:28px">${counts[s]}</div>
-    </div>`
-  ).join('');
-
-  let rows = risks.map(r => `<tr>
-    <td><span class="badge ${r.severity}">${r.severity}</span></td>
-    <td style="font-weight:500">${esc(r.title)}</td>
-    <td style="color:var(--text-muted);font-size:12px">${esc(r.description || '')}</td>
-    <td><span class="tag" style="font-size:11px">${esc(r.entity_type || 'project')}</span></td>
-  </tr>`).join('');
-
-  return `
-    <div class="stats-row" style="margin-bottom:24px">${summary}</div>
-    <table>
-      <thead><tr><th>Severity</th><th>Risk</th><th>Description</th><th>Scope</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ── Personal Data tab ─────────────────────────────────────────────────────
-async function buildPersonalDataTab(scan) {
-  if (scan.status !== 'completed') {
-    return '<div class="empty"><div class="icon">🔍</div><p>Run a scan and wait for it to complete to see personal data findings.</p></div>';
-  }
-  let data;
-  try {
-    data = await api('/scans/' + state.scanId + '/personal-data');
-  } catch (e) {
-    return '<div class="empty"><div class="icon">⚠️</div><p>Could not load personal data results.</p></div>';
-  }
-  const counts = data.counts || [];
-  const findings = data.findings || [];
-  if (!counts.length && !findings.length) {
-    return '<div class="empty"><div class="icon">✅</div><p>No personal data identifiers found in this scan.</p></div>';
-  }
-  const badges = counts.map(c => `<span class="badge" style="margin-right:8px;margin-bottom:8px">${esc(c.pdn_type)}: ${c.count}</span>`).join('');
-  const rows = findings.map(f => `<tr>
-    <td><span class="tag">${esc(f.pdn_type)}</span></td>
-    <td><code style="font-size:12px">${esc(f.matched_identifier)}</code></td>
-    <td style="font-size:12px;word-break:break-all">${esc(f.file_path)}</td>
-    <td style="text-align:right">${f.line_number}</td>
-  </tr>`).join('');
-  return `
-    <div class="stats-row" style="margin-bottom:20px;flex-wrap:wrap">${badges}</div>
-    <table>
-      <thead><tr><th>Data type</th><th>Variable name</th><th>Path</th><th>Line</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ── Developers tab ────────────────────────────────────────────────────────
-async function buildDevelopersTab() {
-  const devs = await api('/scans/' + state.scanId + '/developers');
-  if (!devs.length) return `<div class="empty"><div class="icon">👥</div><p>No developer data.</p></div>`;
-
-  const total = devs.reduce((s, d) => s + d.commit_count, 0);
-
-  const rows = devs.map((d) => {
-    const share = total > 0 ? (d.commit_count / total * 100).toFixed(1) : 0;
-    const p = d.profile || {};
-    const name = p.display_name || p.canonical_username || '—';
-    const tags = d.tags || [];
-    return `<tr>
-      <td>
-        <div style="font-weight:600">${esc(name)}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email || '')}</div>
-      </td>
-      <td>${fmt(d.commit_count)}</td>
-      <td>
-        <div class="score-bar-wrap">
-          <div class="score-bar"><div class="score-fill high" style="width:${share}%"></div></div>
-          <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+    // ── Projects ──────────────────────────────────────────────────────────────
+    function projSort(col) {
+      if (state.projSortBy === col) state.projSortOrder = state.projSortOrder === 'asc' ? 'desc' : 'asc';
+      else { state.projSortBy = col; state.projSortOrder = (col === 'name' || col === 'id' ? 'asc' : 'desc'); }
+      render();
+    }
+    function projSortIcon(col) {
+      if (state.projSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+      return state.projSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+    }
+    let projSearchDebounce = null;
+    function projSearchInput() {
+      state.projSearch = document.getElementById('proj-search').value;
+      if (projSearchDebounce) clearTimeout(projSearchDebounce);
+      projSearchDebounce = setTimeout(function() { projSearchDebounce = null; render(); }, 280);
+    }
+    async function renderProjects() {
+      const params = new URLSearchParams();
+      params.set('sort_by', state.projSortBy);
+      params.set('order', state.projSortOrder);
+      if (state.projSearch && state.projSearch.trim()) params.set('q', state.projSearch.trim());
+      if (state.projHasScans) params.set('has_scans', 'true');
+      const query = params.toString();
+      const projects = await api('/projects/summary' + (query ? '?' + query : ''));
+      const hasFilters = (state.projSearch && state.projSearch.trim()) || state.projHasScans;
+      let html = `
+        <div class="page-title">Projects</div>
+        <div class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''}</div>
+        <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <input type="text" id="proj-search" placeholder="Search by name or description…" value="${esc(state.projSearch)}" oninput="projSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:240px">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
+            <input type="checkbox" ${state.projHasScans ? 'checked' : ''} onchange="state.projHasScans=this.checked; render();">
+            With scans only
+          </label>
         </div>
-      </td>
-      <td>${fmt(d.insertions)}</td>
-      <td>${fmt(d.deletions)}</td>
-      <td>${fmt(d.files_changed)}</td>
-      <td>${fmt(d.active_days)} days</td>
-      <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-      <td>${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="event.stopPropagation(); openEditTagsModal('developer', ${d.developer_id}, ${JSON.stringify(tags)}, ${JSON.stringify(name)})">Edit tags</button></td>
-      <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
-    </tr>`;
-  }).join('');
+      `;
 
-  return `
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scan-only view. <a href="#" onclick="navigate('developers'); return false;" style="color:var(--accent-hover)">View all developers across projects →</a></p>
-    <table>
-      <thead><tr>
-        <th>Developer</th><th>Commits</th><th>Share</th>
-        <th>Insertions</th><th>Deletions</th><th>Files</th>
-        <th>Active days</th><th>Last commit</th><th>Tags</th><th></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
+      if (!projects.length) {
+        html += `<div class="empty"><div class="icon">📂</div><p>${hasFilters ? 'No projects match your filters.' : 'No projects yet. Add one via the API.'}</p></div>`;
+      } else {
+        const rows = projects.map(p => {
+          const hasScans = p.repos_with_completed_scan > 0;
+          const scanHealth = p.repo_count > 0 ? p.repos_with_completed_scan + '/' + p.repo_count : '—';
+          const scoreCls = p.avg_score != null ? scoreClass(p.avg_score) : '';
+          const tags = p.tags || [];
+          return `<tr style="cursor:pointer" onclick="navigate('repos', {projectId: ${p.id}})">
+            <td>
+              <div style="font-weight:600">${esc(p.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${esc(p.description || 'No description')}</div>
+            </td>
+            <td style="font-size:12px;color:var(--text-muted)">${p.id}</td>
+            <td>${p.repo_count}</td>
+            <td>${scanHealth}</td>
+            <td>${hasScans && p.total_loc != null ? fmt(p.total_loc) : '—'}</td>
+            <td>${hasScans && p.total_files != null ? fmt(p.total_files) : '—'}</td>
+            <td>${p.avg_score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${p.avg_score}%"></div></div><span class="score-num">${p.avg_score.toFixed(0)}</span></div>` : '—'}</td>
+            <td style="font-size:11px;color:var(--text-muted)">${p.last_scan_at ? fmtDate(p.last_scan_at) : '—'}</td>
+            <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('project', ${p.id}, ${JSON.stringify(tags)}, ${JSON.stringify(p.name)})">Edit tags</button></td>
+            <td><span class="tag accent">View repos →</span></td>
+          </tr>`;
+        }).join('');
+        html += `
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="projSort('name')" title="Sort by name">Project${projSortIcon('name')}</th>
+            <th class="sortable" onclick="projSort('id')" title="Sort by ID">ID${projSortIcon('id')}</th>
+            <th class="sortable" onclick="projSort('repo_count')" title="Sort by repos">Repos${projSortIcon('repo_count')}</th>
+            <th class="sortable" onclick="projSort('scanned')" title="Sort by scanned">Scanned${projSortIcon('scanned')}</th>
+            <th class="sortable" onclick="projSort('loc')" title="Sort by LOC">LOC${projSortIcon('loc')}</th>
+            <th class="sortable" onclick="projSort('files')" title="Sort by files">Files${projSortIcon('files')}</th>
+            <th class="sortable" onclick="projSort('avg_score')" title="Sort by score">Avg score${projSortIcon('avg_score')}</th>
+            <th class="sortable" onclick="projSort('last_scan_at')" title="Sort by last scan">Last scan${projSortIcon('last_scan_at')}</th>
+            <th>Tags</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      }
+      setMain(html);
+    }
 
-// ── Developers summary (global) ───────────────────────────────────────────
-function devSort(col) {
-  if (state.devSortBy === col) state.devSortOrder = state.devSortOrder === 'asc' ? 'desc' : 'asc';
-  else { state.devSortBy = col; state.devSortOrder = (col === 'name' ? 'asc' : 'desc'); }
-  render();
-}
-function devSortIcon(col) {
-  if (state.devSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
-  return state.devSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
-}
-let devSearchDebounce = null;
-function devSearchInput() {
-  state.devSearch = document.getElementById('dev-search').value;
-  if (devSearchDebounce) clearTimeout(devSearchDebounce);
-  devSearchDebounce = setTimeout(function() { devSearchDebounce = null; render(); }, 280);
-}
-async function renderDevelopersSummary() {
-  const params = new URLSearchParams();
-  if (state.projectFilter != null) params.set('project_id', state.projectFilter);
-  params.set('sort_by', state.devSortBy);
-  params.set('order', state.devSortOrder);
-  if (state.devSearch && state.devSearch.trim()) params.set('q', state.devSearch.trim());
-  const query = params.toString();
-  const [devs, projects] = await Promise.all([
-    api('/developers' + (query ? '?' + query : '')),
-    api('/projects'),
-  ]);
+    // ── Repositories ──────────────────────────────────────────────────────────
+    function repoSort(col) {
+      if (state.repoSortBy === col) state.repoSortOrder = state.repoSortOrder === 'asc' ? 'desc' : 'asc';
+      else { state.repoSortBy = col; state.repoSortOrder = (col === 'name' || col === 'id' ? 'asc' : 'desc'); }
+      render();
+    }
+    function repoSortIcon(col) {
+      if (state.repoSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+      return state.repoSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+    }
+    let repoSearchDebounce = null;
+    function repoSearchInput() {
+      state.repoSearch = document.getElementById('repo-search').value;
+      if (repoSearchDebounce) clearTimeout(repoSearchDebounce);
+      repoSearchDebounce = setTimeout(function() { repoSearchDebounce = null; render(); }, 280);
+    }
+    async function renderRepos() {
+      const params = new URLSearchParams();
+      params.set('sort_by', state.repoSortBy);
+      params.set('order', state.repoSortOrder);
+      if (state.repoSearch && state.repoSearch.trim()) params.set('q', state.repoSearch.trim());
+      if (state.repoHasScans) params.set('has_scans', 'true');
+      const query = params.toString();
+      const [project, allRepos] = await Promise.all([
+        api('/projects/' + state.projectId),
+        api('/projects/' + state.projectId + '/repositories/with-latest-scan' + (query ? '?' + query : '')),
+      ]);
+      const hasFilters = (state.repoSearch && state.repoSearch.trim()) || state.repoHasScans;
+      let html = `
+        <div class="page-title">${esc(project.name)}</div>
+        <div class="page-subtitle">${esc(project.description || '')} · ${allRepos.length} repositor${allRepos.length !== 1 ? 'ies' : 'y'}</div>
+        <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <input type="text" id="repo-search" placeholder="Search by name or URL…" value="${esc(state.repoSearch)}" oninput="repoSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:240px">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
+            <input type="checkbox" ${state.repoHasScans ? 'checked' : ''} onchange="state.repoHasScans=this.checked; render();">
+            With scans only
+          </label>
+        </div>
+      `;
 
-  const totalCommits = devs.reduce((s, d) => s + d.total_commits, 0);
-  const topOne = devs.length ? devs[0] : null;
+      if (!allRepos.length) {
+        html += `<div class="empty"><div class="icon">📦</div><p>${hasFilters ? 'No repositories match your filters.' : 'No repositories. Add one via the API or create a scan with local_scan.py.'}</p></div>`;
+      } else {
+        const rows = allRepos.map(r => {
+          const ls = r.latest_scan;
+          const lastUpdated = ls && (ls.completed_at || ls.started_at);
+          const score = ls && ls.overall_score != null ? ls.overall_score : null;
+          const scoreCls = score != null ? scoreClass(score) : '';
+          const tags = r.tags || [];
+          return `<tr>
+            <td>
+              <div style="font-weight:600">${esc(r.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${esc(r.provider_type)}${r.default_branch ? ' · ' + esc(r.default_branch) : ''}</div>
+            </td>
+            <td>${ls && ls.total_loc != null ? fmt(ls.total_loc) : '—'}</td>
+            <td>${ls && ls.total_files != null ? fmt(ls.total_files) : '—'}</td>
+            <td style="text-transform:capitalize">${ls && ls.project_type ? esc(String(ls.project_type).replace(/_/g, ' ')) : '—'}</td>
+            <td style="font-size:12px;color:var(--text-muted)">${fmtDate(lastUpdated)}</td>
+            <td>${ls && ls.primary_language ? esc(ls.primary_language) : '—'}</td>
+            <td>${score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${score}%"></div></div><span class="score-num">${score.toFixed(0)}</span></div>` : '—'}</td>
+            <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('repository', ${r.id}, ${JSON.stringify(tags)}, ${JSON.stringify(r.name)})">Edit tags</button></td>
+            <td>
+                <a href="#" onclick="navigate('scans', { projectId: ${state.projectId}, repoId: ${r.id} })" class="link-style">View →</a>
+            </td>
+          </tr>`;
+        }).join('');
+        html += `
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="repoSort('name')" title="Sort by name">Repository${repoSortIcon('name')}</th>
+            <th class="sortable" onclick="repoSort('loc')" title="Sort by LOC">Lines of code${repoSortIcon('loc')}</th>
+            <th class="sortable" onclick="repoSort('files')" title="Sort by files">Files${repoSortIcon('files')}</th>
+            <th class="sortable" onclick="repoSort('project_type')" title="Sort by project type">Project type${repoSortIcon('project_type')}</th>
+            <th class="sortable" onclick="repoSort('last_updated')" title="Sort by last updated">Last updated${repoSortIcon('last_updated')}</th>
+            <th class="sortable" onclick="repoSort('primary_language')" title="Sort by language">Primary language${repoSortIcon('primary_language')}</th>
+            <th class="sortable" onclick="repoSort('score')" title="Sort by score">Score${repoSortIcon('score')}</th>
+            <th></th>
+            <th>Tags</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      }
+      state.projectName = project.name;
+      setMain(html);
+      updateNav();
+    }
 
-  let filterHtml = '';
-  filterHtml = `
-    <input type="text" id="dev-search" placeholder="Search by name or email…" value="${esc(state.devSearch)}" oninput="devSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:200px;margin-right:12px">
-    ${projects.length ? `
-    <label style="font-size:12px;color:var(--text-muted);margin-right:8px">Project:</label>
-    <select id="dev-project-filter" onchange="state.projectFilter=this.value?parseInt(this.value,10):null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
-      <option value="">All projects</option>
-      ${projects.map(p => `<option value="${p.id}" ${state.projectFilter === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-    </select>` : ''}`;
+    // ── Scans list ────────────────────────────────────────────────────────────
+    async function renderScans() {
+      const [project, repo, scans] = await Promise.all([
+        api('/projects/' + state.projectId),
+        api('/repositories/' + state.repoId),
+        api('/repositories/' + state.repoId + '/scans'),
+      ]);
+      state.projectName = project.name;
+      state.repoName = repo.name;
 
-  const statsRow = `
-    <div class="stats-row">
-      <div class="stat-box">
-        <div class="stat-label">Developers</div>
-        <div class="stat-value">${devs.length}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Total commits</div>
-        <div class="stat-value">${fmt(totalCommits)}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Top contributor</div>
-        <div class="stat-value" style="font-size:14px">${topOne && topOne.profiles && topOne.profiles[0] ? esc(topOne.profiles[0].display_name || topOne.profiles[0].canonical_username) : '—'}</div>
-        <div class="stat-sub">${topOne && topOne.project_name ? esc(topOne.project_name) : ''}</div>
-      </div>
-      <div class="stat-box" style="align-self:flex-end">${filterHtml}</div>
-    </div>`;
+      let html = `
+        <div class="section-header">
+          <div>
+            <div class="page-title">${esc(repo.name)}</div>
+            <div class="page-subtitle">${esc(repo.url)}</div>
+          </div>
+          <button class="btn btn-primary" id="scan-btn" onclick="triggerScan()">▶ Run Scan</button>
+        </div>
+      `;
 
-  let barHtml = '';
-  if (devs.length && totalCommits > 0) {
-    const segments = devs.slice(0, 20).map((d, i) => {
-      const pct = (d.total_commits / totalCommits * 100).toFixed(2);
-      const label = d.profiles && d.profiles[0] ? (d.profiles[0].display_name || d.profiles[0].canonical_username) : '—';
-      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}" title="${esc(label)} ${pct}%"></div>`;
-    }).join('');
-    barHtml = `<div class="section-title" style="margin-bottom:8px">Commit share</div><div class="lang-bar">${segments}</div>`;
-  }
+      if (!scans.length) {
+        html += `<div class="empty"><div class="icon">🔍</div><p>No scans yet. Click "Run Scan" to start.</p></div>`;
+      } else {
+        html += `<table>
+          <thead><tr>
+            <th>ID</th><th>Branch</th><th>Status</th>
+            <th>Files</th><th>LOC</th><th>Language</th>
+            <th>Started</th><th></th>
+          </tr></thead><tbody>`;
+        for (const s of scans) {
+          const scanNav = "navigate('scan', {projectId: " + state.projectId + ", repoId: " + state.repoId + ", scanId: " + s.id + ", tab:'summary'})";
+          html += `<tr style="cursor:pointer" onclick="${scanNav}">
+            <td><a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">#${s.id}</a></td>
+            <td><code style="font-size:12px">${esc(s.branch)}</code></td>
+            <td><span class="status ${s.status}">${esc(s.status)}</span></td>
+            <td>${fmt(s.total_files)}</td>
+            <td>${fmt(s.total_loc)}</td>
+            <td>${esc(s.primary_language || '—')}</td>
+            <td>${fmtDate(s.started_at)}</td>
+            <td>
+              <a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">View →</a>
+            </td>
+          </tr>`;
+        }
+        html += '</tbody></table>';
+      }
+      setMain(html);
+      updateNav();
+    }
 
-  let tableRows = '';
-  if (devs.length) {
-    tableRows = devs.map(d => {
-      const share = totalCommits > 0 ? (d.total_commits / totalCommits * 100).toFixed(1) : 0;
-      const first = d.profiles && d.profiles[0];
-      const devName = first ? (first.display_name || first.canonical_username) : '—';
-      const devEmail = first ? (first.primary_email || '') : '';
-      const extraProfiles = d.profiles && d.profiles.length > 1 ? `<div style="font-size:10px;color:var(--text-muted)">+${d.profiles.length - 1} profile(s)</div>` : '';
-      const tags = d.tags || [];
-      return `<tr style="cursor:pointer" onclick="navigate('developer', { developerId: ${d.id} })">
-        <td>
-          <div style="font-weight:600">${esc(devName)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${esc(devEmail)}</div>
-          ${extraProfiles}
-        </td>
-        <td><span class="tag">${esc(d.project_name || '')}</span></td>
-        <td>${fmt(d.total_commits)}</td>
+    async function triggerScan() {
+      const btn = document.getElementById('scan-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Starting…'; }
+      try {
+        const result = await api('/repositories/' + state.repoId + '/scan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+        // Poll for completion
+        await pollScan(result.scan_id || result.id);
+        await renderScans();
+      } catch (e) {
+        showError(e);
+      }
+    }
+
+    async function pollScan(scanId) {
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const scan = await api('/scans/' + scanId);
+        if (scan.status === 'completed' || scan.status === 'failed') return scan;
+        // Update button
+        const btn = document.getElementById('scan-btn');
+        if (btn) btn.innerHTML = '<span class="spinner"></span> Scanning…';
+      }
+    }
+
+    // ── Scan Detail ───────────────────────────────────────────────────────────
+    async function renderScanDetail() {
+      updateNav();
+      setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
+
+      try {
+        const [scan, project, repo] = await Promise.all([
+          api('/scans/' + state.scanId + '/summary'),
+          api('/projects/' + state.projectId),
+          api('/repositories/' + state.repoId),
+        ]);
+        state.projectName = project.name;
+        state.repoName = repo.name;
+
+        let content = '';
+        if (state.tab === 'summary')        content = await buildSummaryTab(scan);
+        if (state.tab === 'languages')      content = await buildLanguagesTab();
+        if (state.tab === 'scores')         content = await buildScoresTab(scan);
+        if (state.tab === 'risks')          content = await buildRisksTab();
+        if (state.tab === 'developers')     content = await buildDevelopersTab();
+        if (state.tab === 'personal-data')  content = await buildPersonalDataTab(scan);
+
+        const tabLabels = { summary: 'Summary', languages: 'Languages', scores: 'Scores', risks: 'Risks', developers: 'Developers', 'personal-data': 'Personal Data' };
+        const tabs = ['summary','languages','scores','risks','developers','personal-data']
+          .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">${tabLabels[t]}</div>`).join('');
+
+        const failedBlock = scan.status === 'failed' ? `
+          <div class="error-banner" style="margin-bottom:20px">
+            <div style="font-weight:600;margin-bottom:8px">Scan failed</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${scan.completed_at ? 'Failed at ' + fmtDate(scan.completed_at) : ''}</div>
+            <pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:300px;overflow:auto">${esc(scan.error_message || 'No error message recorded.')}</pre>
+          </div>` : '';
+
+        setMain(`
+          <div class="page-title">Scan #${state.scanId}</div>
+          <div class="page-subtitle">
+            <span class="status ${scan.status}">${scan.status}</span>
+            &nbsp;·&nbsp; Branch: <code>${esc(scan.branch)}</code>
+            ${scan.commit_sha ? '&nbsp;·&nbsp; <code style="font-size:11px">' + esc(scan.commit_sha.slice(0,8)) + '</code>' : ''}
+            &nbsp;·&nbsp; ${fmtDate(scan.started_at)}
+          </div>
+          ${failedBlock}
+          <div class="tabs">${tabs}</div>
+          ${content}
+        `);
+        updateNav();
+      } catch(e) { showError(e); }
+    }
+
+    // ── Summary tab ───────────────────────────────────────────────────────────
+    async function buildSummaryTab(scan) {
+      return `
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-label">Files</div>
+            <div class="stat-value">${fmt(scan.total_files)}</div>
+            <div class="stat-sub">${fmt(scan.file_count_source)} source · ${fmt(scan.file_count_test)} test</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Lines of Code</div>
+            <div class="stat-value">${fmt(scan.total_loc)}</div>
+            <div class="stat-sub">avg ${Math.round(scan.avg_file_loc || 0)} per file</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Size</div>
+            <div class="stat-value">${fmtBytes(scan.size_bytes)}</div>
+            <div class="stat-sub">${fmt(scan.large_files_count)} large files</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Project type</div>
+            <div class="stat-value" style="font-size:15px;padding-top:4px">${esc(scan.project_type || '—')}</div>
+            <div class="stat-sub">${esc(scan.primary_language || '—')}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Languages tab ─────────────────────────────────────────────────────────
+    async function buildLanguagesTab() {
+      const langs = await api('/scans/' + state.scanId + '/languages');
+      if (!langs.length) return '<div class="empty"><div class="icon">🌐</div><p>No language data.</p></div>';
+
+      const segments = langs.map((l, i) =>
+        `<div class="lang-segment" style="width:${l.percentage.toFixed(1)}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`
+      ).join('');
+
+      const dots = langs.map((l, i) =>
+        `<span><span class="lang-dot" style="background:${LANG_COLORS[i % LANG_COLORS.length]}"></span>${esc(l.language)} ${l.percentage.toFixed(1)}%</span>`
+      ).join('');
+
+      let rows = langs.map(l => `<tr>
+        <td>${esc(l.language)}</td>
+        <td>${fmt(l.file_count)}</td>
+        <td>${fmt(l.loc)}</td>
         <td>
           <div class="score-bar-wrap">
-            <div class="score-bar"><div class="score-fill high" style="width:${Math.min(share, 100)}%"></div></div>
-            <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+            <div class="score-bar"><div class="score-fill high" style="width:${l.percentage.toFixed(1)}%"></div></div>
+            <span class="score-num" style="font-size:12px">${l.percentage.toFixed(1)}%</span>
           </div>
         </td>
-        <td>${fmt(d.total_insertions)}</td>
-        <td>${fmt(d.total_deletions)}</td>
-        <td>${fmt(d.files_changed)}</td>
-        <td>${fmt(d.active_days)}</td>
-        <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-        <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('developer', ${d.id}, ${JSON.stringify(tags)}, ${JSON.stringify(devName)})">Edit tags</button></td>
-      </tr>`;
-    }).join('');
-  }
+      </tr>`).join('');
 
-  const tableHtml = devs.length ? `
-    <table>
-      <thead><tr>
-        <th class="sortable" onclick="devSort('name')" title="Sort by name">Developer${devSortIcon('name')}</th>
-        <th>Project</th>
-        <th class="sortable" onclick="devSort('commits')" title="Sort by commits">Commits${devSortIcon('commits')}</th>
-        <th>Share</th>
-        <th class="sortable" onclick="devSort('insertions')" title="Sort by insertions">Insertions${devSortIcon('insertions')}</th>
-        <th class="sortable" onclick="devSort('deletions')" title="Sort by deletions">Deletions${devSortIcon('deletions')}</th>
-        <th class="sortable" onclick="devSort('files_changed')" title="Sort by files">Files${devSortIcon('files_changed')}</th>
-        <th class="sortable" onclick="devSort('active_days')" title="Sort by active days">Active days${devSortIcon('active_days')}</th>
-        <th class="sortable" onclick="devSort('last_commit_at')" title="Sort by last commit">Last commit${devSortIcon('last_commit_at')}</th>
-        <th>Tags</th>
-      </tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>` : `<div class="empty"><div class="icon">👥</div><p>${state.devSearch && state.devSearch.trim() ? 'No developers match your search.' : 'No developers yet. Run scans on repositories to see contributors.'}</p></div>`;
+      return `
+        <div class="lang-bar">${segments}</div>
+        <div class="lang-colors" style="margin-bottom:24px">${dots}</div>
+        <table>
+          <thead><tr><th>Language</th><th>Files</th><th>LOC</th><th>Share</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
 
-  setMain(`
-    <div class="page-title">Developers</div>
-    <div class="page-subtitle">All developers across projects and repositories · aggregated by scan</div>
-    ${statsRow}
-    ${barHtml ? '<div style="margin-bottom:24px">' + barHtml + '</div>' : ''}
-    ${tableHtml}
-  `);
-}
+    // ── Scores tab ────────────────────────────────────────────────────────────
+    async function buildScoresTab(scan) {
+      const scores = await api('/scans/' + state.scanId + '/scores');
+      const overall = scores.find(s => s.domain === 'overall');
 
-// ── Developer profile ─────────────────────────────────────────────────────
-async function renderDeveloperProfile() {
-  const [dev, contributions, languages, modules] = await Promise.all([
-    api('/developers/' + state.developerId),
-    api('/developers/' + state.developerId + '/contributions'),
-    api('/developers/' + state.developerId + '/languages'),
-    api('/developers/' + state.developerId + '/modules'),
-  ]);
+      let rows = scores.filter(s => s.domain !== 'overall').map(s => {
+        const cls = scoreClass(s.score);
+        return `<tr>
+          <td style="text-transform:capitalize;font-weight:500">${esc(s.domain.replace(/_/g,' '))}</td>
+          <td style="width:60%">
+            <div class="score-bar-wrap">
+              <div class="score-bar"><div class="score-fill ${cls}" style="width:${s.score}%"></div></div>
+              <span class="score-num" style="color:var(--${cls === 'high' ? 'green' : cls === 'mid' ? 'yellow' : 'red'})">${s.score.toFixed(1)}</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
 
-  const statsRow = `
-    <div class="stats-row">
-      <div class="stat-box">
-        <div class="stat-label">Commits</div>
-        <div class="stat-value">${fmt(contributions.commit_count)}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Insertions</div>
-        <div class="stat-value">${fmt(contributions.insertions)}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Deletions</div>
-        <div class="stat-value">${fmt(contributions.deletions)}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Files changed</div>
-        <div class="stat-value">${fmt(contributions.files_changed)}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Active days</div>
-        <div class="stat-value">${contributions.active_days}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Share in project</div>
-        <div class="stat-value">${contributions.share_pct != null ? contributions.share_pct.toFixed(1) + '%' : '—'}</div>
-        <div class="stat-sub">${contributions.project_total_commits != null ? 'of ' + fmt(contributions.project_total_commits) + ' commits' : ''}</div>
-      </div>
-    </div>`;
+      const ov = overall ? overall.score : 0;
+      const ovCls = scoreClass(ov);
 
-  let langsHtml = '';
-  if (languages.length) {
-    const totalLoc = languages.reduce((s, l) => s + (l.loc_added || 0), 0);
-    const segments = languages.map((l, i) => {
-      const pct = totalLoc > 0 ? (l.loc_added / totalLoc * 100).toFixed(2) : 0;
-      return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`;
-    }).join('');
-    const rows = languages.map(l => `<tr>
-      <td>${esc(l.language)}</td>
-      <td>${fmt(l.commit_count)}</td>
-      <td>${fmt(l.files_changed)}</td>
-      <td>${fmt(l.loc_added)}</td>
-      <td><div class="score-bar-wrap"><div class="score-bar"><div class="score-fill high" style="width:${l.percentage}%"></div></div><span class="score-num">${l.percentage.toFixed(1)}%</span></div></td>
-    </tr>`).join('');
-    langsHtml = `
-      <div class="section-header"><div class="section-title">By language</div></div>
-      <div class="lang-bar" style="margin-bottom:12px">${segments}</div>
-      <table>
-        <thead><tr><th>Language</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  }
-
-  let modsHtml = '';
-  if (modules.length) {
-    const rows = modules.map(m => `<tr>
-      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
-      <td>${esc(m.module_name)}</td>
-      <td>${fmt(m.commit_count)}</td>
-      <td>${fmt(m.files_changed)}</td>
-      <td>${fmt(m.loc_added)}</td>
-      <td>${m.percentage.toFixed(1)}%</td>
-    </tr>`).join('');
-    modsHtml = `
-      <div class="section-header"><div class="section-title">By module</div></div>
-      <table>
-        <thead><tr><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  }
-
-  const profiles = dev.profiles || [];
-  const primaryName = profiles[0] ? (profiles[0].display_name || profiles[0].canonical_username) : ('Developer #' + dev.id);
-  const devTags = dev.tags || [];
-  const tagsBlock = `
-    <div class="section-header" style="margin-top:20px"><div class="section-title">Tags</div></div>
-    <div style="margin-bottom:20px">
-      ${tagsChips(devTags)}
-      <button class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:12px" onclick="openEditTagsModal('developer', ${dev.id}, ${JSON.stringify(devTags)}, ${JSON.stringify(primaryName)})">Edit tags</button>
-    </div>`;
-  const profilesBlock = profiles.length ? `
-    <div class="section-header" style="margin-top:20px"><div class="section-title">Profiles (${profiles.length})</div></div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-      ${profiles.map(p => `
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;min-width:180px">
-          <div style="font-weight:600;font-size:13px">${esc(p.display_name || p.canonical_username)}</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${esc(p.canonical_username)}</div>
-          ${p.primary_email ? `<div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email)}</div>` : ''}
+      return `
+        <div style="display:flex;align-items:center;gap:24px;margin-bottom:28px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+          <div style="text-align:center;min-width:80px">
+            <div style="font-size:42px;font-weight:800;color:var(--${ovCls === 'high' ? 'green' : ovCls === 'mid' ? 'yellow' : 'red'})">${ov.toFixed(0)}</div>
+            <div style="font-size:12px;color:var(--text-muted)">Overall</div>
+          </div>
+          <div style="flex:1">
+            <div class="score-bar" style="height:10px"><div class="score-fill ${ovCls}" style="width:${ov}%"></div></div>
+          </div>
         </div>
-      `).join('')}
-    </div>` : '';
+        <table>
+          <thead><tr><th>Domain</th><th>Score</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
 
-  setMain(`
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-      <div>
-        <div class="page-title">${esc(primaryName)}</div>
-        <div class="page-subtitle">Developer #${dev.id}${profiles.length > 0 ? ' · ' + profiles.length + ' profile(s)' : ''}</div>
-      </div>
-      <button class="btn btn-outline" onclick="navigate('developers')">← Back to developers</button>
-    </div>
-    ${tagsBlock}
-    ${profilesBlock}
-    <div style="margin-bottom:16px;font-size:12px;color:var(--text-muted)">
-      First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
-    </div>
-    ${statsRow}
-    ${langsHtml}
-    ${modsHtml ? '<div style="margin-top:28px">' + modsHtml + '</div>' : ''}
-  `);
-}
+    // ── Risks tab ─────────────────────────────────────────────────────────────
+    async function buildRisksTab() {
+      const risks = await api('/scans/' + state.scanId + '/risks');
+      if (!risks.length) return `<div class="empty"><div class="icon">✅</div><p>No risks detected.</p></div>`;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-function esc(s) {
-  if (s == null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+      const counts = {};
+      risks.forEach(r => counts[r.severity] = (counts[r.severity] || 0) + 1);
 
-// ── Boot ──────────────────────────────────────────────────────────────────
-(function boot() {
-  const parsed = pathToState(location.pathname);
-  Object.assign(state, parsed);
-  history.replaceState(null, '', stateToPath(state));
-  render();
-})();
-window.addEventListener('popstate', function () {
-  Object.assign(state, pathToState(location.pathname));
-  render();
-});
-window.addEventListener('resize', function () {
-  if (typeof treemapChartInstance !== 'undefined' && treemapChartInstance) treemapChartInstance.resize();
-});
+      const summary = ['critical','high','medium','low'].filter(s => counts[s]).map(s =>
+        `<div class="stat-box" style="min-width:100px">
+          <div class="stat-label">${s}</div>
+          <div class="stat-value" style="font-size:28px">${counts[s]}</div>
+        </div>`
+      ).join('');
+
+      let rows = risks.map(r => `<tr>
+        <td><span class="badge ${r.severity}">${r.severity}</span></td>
+        <td style="font-weight:500">${esc(r.title)}</td>
+        <td style="color:var(--text-muted);font-size:12px">${esc(r.description || '')}</td>
+        <td><span class="tag" style="font-size:11px">${esc(r.entity_type || 'project')}</span></td>
+      </tr>`).join('');
+
+      return `
+        <div class="stats-row" style="margin-bottom:24px">${summary}</div>
+        <table>
+          <thead><tr><th>Severity</th><th>Risk</th><th>Description</th><th>Scope</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ── Personal Data tab ─────────────────────────────────────────────────────
+    async function buildPersonalDataTab(scan) {
+      if (scan.status !== 'completed') {
+        return '<div class="empty"><div class="icon">🔍</div><p>Run a scan and wait for it to complete to see personal data findings.</p></div>';
+      }
+      let data;
+      try {
+        data = await api('/scans/' + state.scanId + '/personal-data');
+      } catch (e) {
+        return '<div class="empty"><div class="icon">⚠️</div><p>Could not load personal data results.</p></div>';
+      }
+      const counts = data.counts || [];
+      const findings = data.findings || [];
+      if (!counts.length && !findings.length) {
+        return '<div class="empty"><div class="icon">✅</div><p>No personal data identifiers found in this scan.</p></div>';
+      }
+      const countBoxes = counts.map(c => `<div class="stat-box" style="min-width:100px"><div class="stat-label">${esc(c.pdn_type)}</div><div class="stat-value">${c.count}</div></div>`).join('');
+      const rows = findings.map(f => {
+        const pathLine = esc(f.file_path) + ':' + f.line_number;
+        const sourceLink = f.source_url ? '<a href="' + esc(f.source_url) + '" target="_blank" rel="noopener noreferrer" class="link-style">Open in source</a>' : '';
+        return `<tr>
+        <td><span class="tag">${esc(f.pdn_type)}</span></td>
+        <td><code style="font-size:12px">${esc(f.matched_identifier)}</code></td>
+        <td style="font-size:12px;word-break:break-all">${pathLine}</td>
+        <td>${sourceLink}</td>
+      </tr>`;
+      }).join('');
+      return `
+        <div class="stats-row" style="margin-bottom:20px;flex-wrap:wrap">${countBoxes}</div>
+        <table>
+          <thead><tr><th>Data type</th><th>Variable name</th><th>Path:Line</th><th>Source</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ── Developers tab ────────────────────────────────────────────────────────
+    async function buildDevelopersTab() {
+      const devs = await api('/scans/' + state.scanId + '/developers');
+      if (!devs.length) return `<div class="empty"><div class="icon">👥</div><p>No developer data.</p></div>`;
+
+      const total = devs.reduce((s, d) => s + d.commit_count, 0);
+
+      const rows = devs.map((d) => {
+        const share = total > 0 ? (d.commit_count / total * 100).toFixed(1) : 0;
+        const p = d.profile || {};
+        const name = p.display_name || p.canonical_username || '—';
+        const tags = d.tags || [];
+        return `<tr>
+          <td>
+            <div style="font-weight:600">${esc(name)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email || '')}</div>
+          </td>
+          <td>${fmt(d.commit_count)}</td>
+          <td>
+            <div class="score-bar-wrap">
+              <div class="score-bar"><div class="score-fill high" style="width:${share}%"></div></div>
+              <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+            </div>
+          </td>
+          <td>${fmt(d.insertions)}</td>
+          <td>${fmt(d.deletions)}</td>
+          <td>${fmt(d.files_changed)}</td>
+          <td>${fmt(d.active_days)} days</td>
+          <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
+          <td>${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="event.stopPropagation(); openEditTagsModal('developer', ${d.developer_id}, ${JSON.stringify(tags)}, ${JSON.stringify(name)})">Edit tags</button></td>
+          <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
+        </tr>`;
+      }).join('');
+
+      return `
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Scan-only view. <a href="#" onclick="navigate('developers'); return false;" style="color:var(--accent-hover)">View all developers across projects →</a></p>
+        <table>
+          <thead><tr>
+            <th>Developer</th><th>Commits</th><th>Share</th>
+            <th>Insertions</th><th>Deletions</th><th>Files</th>
+            <th>Active days</th><th>Last commit</th><th>Tags</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ── Developers summary (global) ───────────────────────────────────────────
+    function devSort(col) {
+      if (state.devSortBy === col) state.devSortOrder = state.devSortOrder === 'asc' ? 'desc' : 'asc';
+      else { state.devSortBy = col; state.devSortOrder = (col === 'name' ? 'asc' : 'desc'); }
+      render();
+    }
+    function devSortIcon(col) {
+      if (state.devSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+      return state.devSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+    }
+    let devSearchDebounce = null;
+    function devSearchInput() {
+      state.devSearch = document.getElementById('dev-search').value;
+      if (devSearchDebounce) clearTimeout(devSearchDebounce);
+      devSearchDebounce = setTimeout(function() { devSearchDebounce = null; render(); }, 280);
+    }
+    async function renderDevelopersSummary() {
+      const params = new URLSearchParams();
+      if (state.projectFilter != null) params.set('project_id', state.projectFilter);
+      params.set('sort_by', state.devSortBy);
+      params.set('order', state.devSortOrder);
+      if (state.devSearch && state.devSearch.trim()) params.set('q', state.devSearch.trim());
+      const query = params.toString();
+      const [devs, projects] = await Promise.all([
+        api('/developers' + (query ? '?' + query : '')),
+        api('/projects'),
+      ]);
+
+      const totalCommits = devs.reduce((s, d) => s + d.total_commits, 0);
+      const topOne = devs.length ? devs[0] : null;
+
+      let filterHtml = '';
+      filterHtml = `
+        <input type="text" id="dev-search" placeholder="Search by name or email…" value="${esc(state.devSearch)}" oninput="devSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:200px;margin-right:12px">
+        ${projects.length ? `
+        <label style="font-size:12px;color:var(--text-muted);margin-right:8px">Project:</label>
+        <select id="dev-project-filter" onchange="state.projectFilter=this.value?parseInt(this.value,10):null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+          <option value="">All projects</option>
+          ${projects.map(p => `<option value="${p.id}" ${state.projectFilter === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        </select>` : ''}`;
+
+      const statsRow = `
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-label">Developers</div>
+            <div class="stat-value">${devs.length}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Total commits</div>
+            <div class="stat-value">${fmt(totalCommits)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Top contributor</div>
+            <div class="stat-value" style="font-size:14px">${topOne && topOne.profiles && topOne.profiles[0] ? esc(topOne.profiles[0].display_name || topOne.profiles[0].canonical_username) : '—'}</div>
+            <div class="stat-sub">${topOne && topOne.project_name ? esc(topOne.project_name) : ''}</div>
+          </div>
+          <div class="stat-box" style="align-self:flex-end">${filterHtml}</div>
+        </div>`;
+
+      let barHtml = '';
+      if (devs.length && totalCommits > 0) {
+        const segments = devs.slice(0, 20).map((d, i) => {
+          const pct = (d.total_commits / totalCommits * 100).toFixed(2);
+          const label = d.profiles && d.profiles[0] ? (d.profiles[0].display_name || d.profiles[0].canonical_username) : '—';
+          return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}" title="${esc(label)} ${pct}%"></div>`;
+        }).join('');
+        barHtml = `<div class="section-title" style="margin-bottom:8px">Commit share</div><div class="lang-bar">${segments}</div>`;
+      }
+
+      let tableRows = '';
+      if (devs.length) {
+        tableRows = devs.map(d => {
+          const share = totalCommits > 0 ? (d.total_commits / totalCommits * 100).toFixed(1) : 0;
+          const first = d.profiles && d.profiles[0];
+          const devName = first ? (first.display_name || first.canonical_username) : '—';
+          const devEmail = first ? (first.primary_email || '') : '';
+          const extraProfiles = d.profiles && d.profiles.length > 1 ? `<div style="font-size:10px;color:var(--text-muted)">+${d.profiles.length - 1} profile(s)</div>` : '';
+          const tags = d.tags || [];
+          return `<tr style="cursor:pointer" onclick="navigate('developer', { developerId: ${d.id} })">
+            <td>
+              <div style="font-weight:600">${esc(devName)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${esc(devEmail)}</div>
+              ${extraProfiles}
+            </td>
+            <td><span class="tag">${esc(d.project_name || '')}</span></td>
+            <td>${fmt(d.total_commits)}</td>
+            <td>
+              <div class="score-bar-wrap">
+                <div class="score-bar"><div class="score-fill high" style="width:${Math.min(share, 100)}%"></div></div>
+                <span style="min-width:36px;text-align:right;font-size:12px">${share}%</span>
+              </div>
+            </td>
+            <td>${fmt(d.total_insertions)}</td>
+            <td>${fmt(d.total_deletions)}</td>
+            <td>${fmt(d.files_changed)}</td>
+            <td>${fmt(d.active_days)}</td>
+            <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
+            <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('developer', ${d.id}, ${JSON.stringify(tags)}, ${JSON.stringify(devName)})">Edit tags</button></td>
+          </tr>`;
+        }).join('');
+      }
+
+      const tableHtml = devs.length ? `
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="devSort('name')" title="Sort by name">Developer${devSortIcon('name')}</th>
+            <th>Project</th>
+            <th class="sortable" onclick="devSort('commits')" title="Sort by commits">Commits${devSortIcon('commits')}</th>
+            <th>Share</th>
+            <th class="sortable" onclick="devSort('insertions')" title="Sort by insertions">Insertions${devSortIcon('insertions')}</th>
+            <th class="sortable" onclick="devSort('deletions')" title="Sort by deletions">Deletions${devSortIcon('deletions')}</th>
+            <th class="sortable" onclick="devSort('files_changed')" title="Sort by files">Files${devSortIcon('files_changed')}</th>
+            <th class="sortable" onclick="devSort('active_days')" title="Sort by active days">Active days${devSortIcon('active_days')}</th>
+            <th class="sortable" onclick="devSort('last_commit_at')" title="Sort by last commit">Last commit${devSortIcon('last_commit_at')}</th>
+            <th>Tags</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>` : `<div class="empty"><div class="icon">👥</div><p>${state.devSearch && state.devSearch.trim() ? 'No developers match your search.' : 'No developers yet. Run scans on repositories to see contributors.'}</p></div>`;
+
+      setMain(`
+        <div class="page-title">Developers</div>
+        <div class="page-subtitle">All developers across projects and repositories · aggregated by scan</div>
+        ${statsRow}
+        ${barHtml ? '<div style="margin-bottom:24px">' + barHtml + '</div>' : ''}
+        ${tableHtml}
+      `);
+    }
+
+    // ── Developer profile ─────────────────────────────────────────────────────
+    async function renderDeveloperProfile() {
+      const [dev, contributions, languages, modules] = await Promise.all([
+        api('/developers/' + state.developerId),
+        api('/developers/' + state.developerId + '/contributions'),
+        api('/developers/' + state.developerId + '/languages'),
+        api('/developers/' + state.developerId + '/modules'),
+      ]);
+
+      const statsRow = `
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-label">Commits</div>
+            <div class="stat-value">${fmt(contributions.commit_count)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Insertions</div>
+            <div class="stat-value">${fmt(contributions.insertions)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Deletions</div>
+            <div class="stat-value">${fmt(contributions.deletions)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Files changed</div>
+            <div class="stat-value">${fmt(contributions.files_changed)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Active days</div>
+            <div class="stat-value">${contributions.active_days}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Share in project</div>
+            <div class="stat-value">${contributions.share_pct != null ? contributions.share_pct.toFixed(1) + '%' : '—'}</div>
+            <div class="stat-sub">${contributions.project_total_commits != null ? 'of ' + fmt(contributions.project_total_commits) + ' commits' : ''}</div>
+          </div>
+        </div>`;
+
+      let langsHtml = '';
+      if (languages.length) {
+        const totalLoc = languages.reduce((s, l) => s + (l.loc_added || 0), 0);
+        const segments = languages.map((l, i) => {
+          const pct = totalLoc > 0 ? (l.loc_added / totalLoc * 100).toFixed(2) : 0;
+          return `<div class="lang-segment" style="width:${pct}%;background:${LANG_COLORS[i % LANG_COLORS.length]}"></div>`;
+        }).join('');
+        const rows = languages.map(l => `<tr>
+          <td>${esc(l.language)}</td>
+          <td>${fmt(l.commit_count)}</td>
+          <td>${fmt(l.files_changed)}</td>
+          <td>${fmt(l.loc_added)}</td>
+          <td><div class="score-bar-wrap"><div class="score-bar"><div class="score-fill high" style="width:${l.percentage}%"></div></div><span class="score-num">${l.percentage.toFixed(1)}%</span></div></td>
+        </tr>`).join('');
+        langsHtml = `
+          <div class="section-header"><div class="section-title">By language</div></div>
+          <div class="lang-bar" style="margin-bottom:12px">${segments}</div>
+          <table>
+            <thead><tr><th>Language</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+
+      let modsHtml = '';
+      if (modules.length) {
+        const rows = modules.map(m => `<tr>
+          <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
+          <td>${esc(m.module_name)}</td>
+          <td>${fmt(m.commit_count)}</td>
+          <td>${fmt(m.files_changed)}</td>
+          <td>${fmt(m.loc_added)}</td>
+          <td>${m.percentage.toFixed(1)}%</td>
+        </tr>`).join('');
+        modsHtml = `
+          <div class="section-header"><div class="section-title">By module</div></div>
+          <table>
+            <thead><tr><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+
+      const profiles = dev.profiles || [];
+      const primaryName = profiles[0] ? (profiles[0].display_name || profiles[0].canonical_username) : ('Developer #' + dev.id);
+      const devTags = dev.tags || [];
+      const tagsBlock = `
+        <div class="section-header" style="margin-top:20px"><div class="section-title">Tags</div></div>
+        <div style="margin-bottom:20px">
+          ${tagsChips(devTags)}
+          <button class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:12px" onclick="openEditTagsModal('developer', ${dev.id}, ${JSON.stringify(devTags)}, ${JSON.stringify(primaryName)})">Edit tags</button>
+        </div>`;
+      const profilesBlock = profiles.length ? `
+        <div class="section-header" style="margin-top:20px"><div class="section-title">Profiles (${profiles.length})</div></div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+          ${profiles.map(p => `
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;min-width:180px">
+              <div style="font-weight:600;font-size:13px">${esc(p.display_name || p.canonical_username)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${esc(p.canonical_username)}</div>
+              ${p.primary_email ? `<div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>` : '';
+
+      setMain(`
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+          <div>
+            <div class="page-title">${esc(primaryName)}</div>
+            <div class="page-subtitle">Developer #${dev.id}${profiles.length > 0 ? ' · ' + profiles.length + ' profile(s)' : ''}</div>
+          </div>
+          <button class="btn btn-outline" onclick="navigate('developers')">← Back to developers</button>
+        </div>
+        ${tagsBlock}
+        ${profilesBlock}
+        <div style="margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+          First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
+        </div>
+        ${statsRow}
+        ${langsHtml}
+        ${modsHtml ? '<div style="margin-top:28px">' + modsHtml + '</div>' : ''}
+      `);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+    (function boot() {
+      const parsed = pathToState(location.pathname);
+      Object.assign(state, parsed);
+      history.replaceState(null, '', stateToPath(state));
+      render();
+    })();
+    window.addEventListener('popstate', function () {
+      Object.assign(state, pathToState(location.pathname));
+      render();
+    });
+    window.addEventListener('resize', function () {
+      if (typeof treemapChartInstance !== 'undefined' && treemapChartInstance) treemapChartInstance.resize();
+    });
 </script>
-</body>
 </html>

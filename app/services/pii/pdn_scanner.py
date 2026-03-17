@@ -103,6 +103,8 @@ def scan_repository_for_pdn(
             continue
 
         rel_path = str(item.relative_to(repo_path))
+        if "test" in rel_path.lower():
+            continue
         try:
             with open(item, encoding="utf-8", errors="replace") as f:
                 line_num = 0

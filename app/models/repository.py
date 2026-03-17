@@ -28,10 +28,12 @@ class RepositoryTag(Base):
 class ProviderType(str, enum.Enum):
     bitbucket = "bitbucket"
     gitlab = "gitlab"
+    github = "github"
 
 
 class Repository(Base):
     __tablename__ = "repositories"
+    __table_args__ = (UniqueConstraint("project_id", "url", name="uq_repositories_project_id_url"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(

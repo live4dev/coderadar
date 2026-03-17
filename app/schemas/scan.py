@@ -92,6 +92,7 @@ class PersonalDataFindingOut(BaseModel):
     matched_identifier: str
     file_path: str
     line_number: int
+    source_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -99,6 +100,25 @@ class PersonalDataFindingOut(BaseModel):
 class PersonalDataOut(BaseModel):
     counts: list[PersonalDataCountOut]
     findings: list[PersonalDataFindingOut]
+
+
+class PersonalDataReportEntry(BaseModel):
+    """One row in the personal data report: repo + its latest scan PDn summary."""
+    project_id: int
+    project_name: str
+    repository_id: int
+    repository_name: str
+    scan_id: int
+    scan_started_at: datetime | None
+    scan_completed_at: datetime | None
+    counts: list[PersonalDataCountOut]
+    findings: list[PersonalDataFindingOut] | None = None
+    repository_source_url: str | None = None
+
+
+class PersonalDataReportOut(BaseModel):
+    """Aggregated personal data report by projects/repositories (latest scan per repo)."""
+    entries: list[PersonalDataReportEntry]
 
 
 class ScanMetricsDiff(BaseModel):

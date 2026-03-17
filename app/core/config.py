@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # PDn (personal data) types config path (relative to project root)
     pdn_types_config: str = "config/pdn_types.yaml"
 
+    # Git history: max commits to scan (0 = unlimited)
+    git_history_scan_limit: int = 0
+
     @property
     def repos_cache_path(self) -> Path:
         p = Path(self.repos_cache_dir)
