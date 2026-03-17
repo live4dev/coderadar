@@ -259,6 +259,8 @@
   td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface2); }
+  tr.row-clickable { cursor: pointer; }
+  tr.row-clickable:hover td { background: var(--surface2); }
 
   /* ── Score bars ── */
   .score-bar-wrap { display: flex; align-items: center; gap: 10px; }
@@ -811,7 +813,7 @@
         const scanDate = e.scan_completed_at || e.scan_started_at;
         const goScan = "navigate('scan', { projectId: " + e.project_id + ", repoId: " + e.repository_id + ", scanId: " + e.scan_id + ", tab: 'personal-data' })";
         const sourceLink = e.repository_source_url ? '<a href="' + esc(e.repository_source_url) + '" target="_blank" rel="noopener noreferrer" class="link-style">Open in source</a>' : '—';
-        return '<tr><td>' + esc(e.project_name) + '</td><td>' + esc(e.repository_name) + '</td><td style="font-size:12px;color:var(--text-muted)">' + fmtDate(scanDate) + ' <a href="#" onclick="event.preventDefault();' + goScan + '" class="link-style">#' + e.scan_id + '</a></td><td>' + total + '</td><td><div style="display:flex;flex-wrap:wrap;gap:4px">' + (countTags || '—') + '</div></td><td>' + sourceLink + '</td><td><button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="' + goScan + '">View scan →</button></td></tr>';
+        return '<tr class="row-clickable" onclick="' + goScan + '"><td>' + esc(e.project_name) + '</td><td>' + esc(e.repository_name) + '</td><td style="font-size:12px;color:var(--text-muted)">' + fmtDate(scanDate) + ' <a href="#" onclick="event.preventDefault();event.stopPropagation();' + goScan + '" class="link-style">#' + e.scan_id + '</a></td><td>' + total + '</td><td><div style="display:flex;flex-wrap:wrap;gap:4px">' + (countTags || '—') + '</div></td><td onclick="event.stopPropagation()">' + sourceLink + '</td><td onclick="event.stopPropagation()"><button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="' + goScan + '">View scan →</button></td></tr>';
       }).join('');
       const tableHtml = entries.length ? `
         <table>
@@ -874,7 +876,7 @@
           const scanHealth = p.repo_count > 0 ? p.repos_with_completed_scan + '/' + p.repo_count : '—';
           const scoreCls = p.avg_score != null ? scoreClass(p.avg_score) : '';
           const tags = p.tags || [];
-          return `<tr style="cursor:pointer" onclick="navigate('repos', {projectId: ${p.id}})">
+          return `<tr class="row-clickable" onclick="navigate('repos', {projectId: ${p.id}})">
             <td>
               <div style="font-weight:600">${esc(p.name)}</div>
               <div style="font-size:11px;color:var(--text-muted)">${esc(p.description || 'No description')}</div>
@@ -959,7 +961,7 @@
           const score = ls && ls.overall_score != null ? ls.overall_score : null;
           const scoreCls = score != null ? scoreClass(score) : '';
           const tags = r.tags || [];
-          return `<tr>
+          return `<tr class="row-clickable" onclick="navigate('scans', { projectId: ${state.projectId}, repoId: ${r.id} })">
             <td>
               <div style="font-weight:600">${esc(r.name)}</div>
               <div style="font-size:11px;color:var(--text-muted)">${esc(r.provider_type)}${r.default_branch ? ' · ' + esc(r.default_branch) : ''}</div>
@@ -971,7 +973,7 @@
             <td>${ls && ls.primary_language ? esc(ls.primary_language) : '—'}</td>
             <td>${score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${score}%"></div></div><span class="score-num">${score.toFixed(0)}</span></div>` : '—'}</td>
             <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('repository', ${r.id}, ${JSON.stringify(tags)}, ${JSON.stringify(r.name)})">Edit tags</button></td>
-            <td>
+            <td onclick="event.stopPropagation()">
                 <a href="#" onclick="navigate('scans', { projectId: ${state.projectId}, repoId: ${r.id} })" class="link-style">View →</a>
             </td>
           </tr>`;
@@ -1028,7 +1030,7 @@
           </tr></thead><tbody>`;
         for (const s of scans) {
           const scanNav = "navigate('scan', {projectId: " + state.projectId + ", repoId: " + state.repoId + ", scanId: " + s.id + ", tab:'summary'})";
-          html += `<tr style="cursor:pointer" onclick="${scanNav}">
+          html += `<tr class="row-clickable" onclick="${scanNav}">
             <td><a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">#${s.id}</a></td>
             <td><code style="font-size:12px">${esc(s.branch)}</code></td>
             <td><span class="status ${s.status}">${esc(s.status)}</span></td>
@@ -1296,7 +1298,7 @@
         const p = d.profile || {};
         const name = p.display_name || p.canonical_username || '—';
         const tags = d.tags || [];
-        return `<tr>
+        return `<tr class="row-clickable" onclick="navigate('developer', { developerId: ${d.developer_id} })">
           <td>
             <div style="font-weight:600">${esc(name)}</div>
             <div style="font-size:11px;color:var(--text-muted)">${esc(p.primary_email || '')}</div>
@@ -1313,8 +1315,8 @@
           <td>${fmt(d.files_changed)}</td>
           <td>${fmt(d.active_days)} days</td>
           <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-          <td>${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="event.stopPropagation(); openEditTagsModal('developer', ${d.developer_id}, ${JSON.stringify(tags)}, ${JSON.stringify(name)})">Edit tags</button></td>
-          <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
+          <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('developer', ${d.developer_id}, ${JSON.stringify(tags)}, ${JSON.stringify(name)})">Edit tags</button></td>
+          <td onclick="event.stopPropagation()"><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
         </tr>`;
       }).join('');
 
@@ -1408,7 +1410,7 @@
           const devEmail = first ? (first.primary_email || '') : '';
           const extraProfiles = d.profiles && d.profiles.length > 1 ? `<div style="font-size:10px;color:var(--text-muted)">+${d.profiles.length - 1} profile(s)</div>` : '';
           const tags = d.tags || [];
-          return `<tr style="cursor:pointer" onclick="navigate('developer', { developerId: ${d.id} })">
+          return `<tr class="row-clickable" onclick="navigate('developer', { developerId: ${d.id} })">
             <td>
               <div style="font-weight:600">${esc(devName)}</div>
               <div style="font-size:11px;color:var(--text-muted)">${esc(devEmail)}</div>
