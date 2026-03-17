@@ -1,0 +1,38 @@
+# Personal data types (ПДн) and identifier variants to search in source code.
+# Each type has a canonical name and a list of identifiers (variable/field names) as written in code.
+pdn_types:
+  - name: personal_id
+    identifiers:
+      - personal_id
+      - personaID
+      - personalId
+      - PERSONAL_ID
+      - personal-id
+  - name: passport_number
+    identifiers:
+      - passport_number
+      - passportNumber
+      - passport_no
+      - passportNo
+      - PASSPORT_NUMBER
+  - name: inn
+    identifiers:
+      - inn
+      - INN
+      - taxpayer_id
+      - taxpayerId
+  - name: phone
+    identifiers:
+      - phone
+      - phone_number
+      - phoneNumber
+      - PHONE
+      - mobile_phone
+      - mobilePhone
+  - name: email
+    identifiers:
+      - email
+      - email_address
+      - emailAddress
+      - user_email
+      - userEmail

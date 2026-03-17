@@ -1,11 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, DeveloperContribution
+from app.models import (
+    Repository, Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding,
+    DeveloperContribution, DeveloperProfile,
+)
+from app.services.source_links import build_source_url
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
     DependencyOut, ScanScoreOut, ScanRiskOut,
+    PersonalDataOut, PersonalDataCountOut, PersonalDataFindingOut,
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
 )
@@ -72,6 +78,40 @@ def get_scan_risks(scan_id: int, db: Session = Depends(get_db)):
         .order_by(ScanRisk.severity.desc())
         .all()
     )
+
+
+@router.get("/{scan_id}/personal-data", response_model=PersonalDataOut)
+def get_scan_personal_data(scan_id: int, db: Session = Depends(get_db)):
+    scan = _get_scan_or_404(scan_id, db)
+    repo = db.get(Repository, scan.repository_id)
+    ref = scan.commit_sha or scan.branch or (repo.default_branch if repo else None) or "HEAD"
+    provider = repo.provider_type.value if repo else ""
+    repo_url = repo.url if repo else ""
+
+    rows = (
+        db.query(ScanPersonalDataFinding)
+        .filter_by(scan_id=scan_id)
+        .order_by(ScanPersonalDataFinding.pdn_type, ScanPersonalDataFinding.file_path, ScanPersonalDataFinding.line_number)
+        .all()
+    )
+    # Aggregate counts by pdn_type
+    count_q = (
+        db.query(ScanPersonalDataFinding.pdn_type, func.count(ScanPersonalDataFinding.id).label("count"))
+        .filter_by(scan_id=scan_id)
+        .group_by(ScanPersonalDataFinding.pdn_type)
+    )
+    counts = [PersonalDataCountOut(pdn_type=t, count=c) for t, c in count_q.all()]
+    findings = [
+        PersonalDataFindingOut(
+            pdn_type=r.pdn_type,
+            matched_identifier=r.matched_identifier,
+            file_path=r.file_path,
+            line_number=r.line_number,
+            source_url=build_source_url(repo_url, provider, ref, r.file_path, r.line_number) if repo_url and provider else None,
+        )
+        for r in rows
+    ]
+    return PersonalDataOut(counts=counts, findings=findings)
 
 
 @router.get("/{scan_id}/compare", response_model=ScanCompareOut)
@@ -172,16 +212,75 @@ def compare_scans(
     )
 
 
+SCAN_DEVELOPERS_SORT_FIELDS = {
+    "name", "commits", "insertions", "deletions",
+    "files_changed", "active_days", "last_commit_at",
+}
+
+
 @router.get("/{scan_id}/developers")
-def get_scan_developers(scan_id: int, db: Session = Depends(get_db)):
+def get_scan_developers(
+    scan_id: int,
+    sort_by: str = Query(
+        "commits",
+        description="Sort by: name, commits, insertions, deletions, files_changed, active_days, last_commit_at",
+    ),
+    order: str = Query("desc", description="Sort order: asc or desc"),
+    q: str | None = Query(None, description="Search by display name, username or email"),
+    db: Session = Depends(get_db),
+):
     _get_scan_or_404(scan_id, db)
-    rows = (
+    if sort_by not in SCAN_DEVELOPERS_SORT_FIELDS:
+        sort_by = "commits"
+    order_asc = order.lower() == "asc"
+
+    query = (
         db.query(DeveloperContribution)
         .options(joinedload(DeveloperContribution.profile))
         .filter_by(scan_id=scan_id)
-        .order_by(DeveloperContribution.commit_count.desc())
-        .all()
     )
+
+    if q and q.strip():
+        search_term = f"%{q.strip()}%"
+        query = query.join(DeveloperProfile, DeveloperContribution.profile_id == DeveloperProfile.id).filter(
+            or_(
+                DeveloperProfile.display_name.ilike(search_term),
+                DeveloperProfile.canonical_username.ilike(search_term),
+                DeveloperProfile.primary_email.ilike(search_term),
+            )
+        )
+
+    if sort_by == "name":
+        query = query.join(DeveloperProfile, DeveloperContribution.profile_id == DeveloperProfile.id)
+        name_col = func.coalesce(DeveloperProfile.display_name, DeveloperProfile.canonical_username)
+        query = query.order_by(name_col.asc() if order_asc else name_col.desc())
+    elif sort_by == "commits":
+        query = query.order_by(
+            DeveloperContribution.commit_count.asc() if order_asc else DeveloperContribution.commit_count.desc()
+        )
+    elif sort_by == "insertions":
+        query = query.order_by(
+            DeveloperContribution.insertions.asc() if order_asc else DeveloperContribution.insertions.desc()
+        )
+    elif sort_by == "deletions":
+        query = query.order_by(
+            DeveloperContribution.deletions.asc() if order_asc else DeveloperContribution.deletions.desc()
+        )
+    elif sort_by == "files_changed":
+        query = query.order_by(
+            DeveloperContribution.files_changed.asc() if order_asc else DeveloperContribution.files_changed.desc()
+        )
+    elif sort_by == "active_days":
+        query = query.order_by(
+            DeveloperContribution.active_days.asc() if order_asc else DeveloperContribution.active_days.desc()
+        )
+    elif sort_by == "last_commit_at":
+        query = query.order_by(
+            DeveloperContribution.last_commit_at.asc().nullslast() if order_asc
+            else DeveloperContribution.last_commit_at.desc().nullsfirst()
+        )
+
+    rows = query.all()
     dev_ids = list({r.profile.developer_id for r in rows})
     dev_tags = {}
     if dev_ids:

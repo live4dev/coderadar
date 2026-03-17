@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import re
 
+from app.core.config import settings
 from app.services.analysis.file_analyzer import detect_language, SKIP_DIRS
 
 # Unique ASCII separator — safe to use in git --format
@@ -66,9 +67,14 @@ def parse_git_log_v2(repo_path: Path) -> list[CommitRecord]:
     Each commit block is separated by _SEP on its own line.
     Format: SEP\\nSHA\\nAuthorName\\nAuthorEmail\\nISO-timestamp
     followed by blank line then numstat lines.
+    Respects settings.git_history_scan_limit (0 = unlimited).
     """
     fmt = f"--format={_SEP}%n%H%n%aN%n%aE%n%aI"
-    raw = _run_git(repo_path, "log", fmt, "--numstat", "--no-merges")
+    args: list[str] = ["log", fmt, "--numstat", "--no-merges"]
+    limit = settings.git_history_scan_limit or 0
+    if limit > 0:
+        args.extend(["-n", str(limit)])
+    raw = _run_git(repo_path, *args)
 
     commits: list[CommitRecord] = []
     blocks = raw.split(_SEP + "\n")

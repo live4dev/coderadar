@@ -39,7 +39,7 @@ def create_repository(body: RepositoryCreate, db: Session = Depends(get_db)):
     try:
         provider = ProviderType(body.provider_type)
     except ValueError:
-        raise HTTPException(400, f"Unknown provider_type: {body.provider_type!r}. Use 'bitbucket' or 'gitlab'.")
+        raise HTTPException(400, f"Unknown provider_type: {body.provider_type!r}. Use 'bitbucket', 'gitlab', or 'github'.")
 
     repo = Repository(
         project_id=body.project_id,
@@ -66,6 +66,29 @@ def get_repository(repo_id: int, db: Session = Depends(get_db)):
     if not repo:
         raise HTTPException(404, "Repository not found")
     return repo
+
+
+@router.post("/scan-all", response_model=list[ScanOut], status_code=202)
+def trigger_scan_all(db: Session = Depends(get_db)):
+    """Create a pending scan for every repository. Worker will process them in order."""
+    repos = db.query(Repository).all()
+    if not repos:
+        return []
+    created = []
+    for repo in repos:
+        branch = repo.default_branch or ""
+        scan = Scan(
+            repository_id=repo.id,
+            branch=branch,
+            status=ScanStatus.pending,
+        )
+        db.add(scan)
+        created.append(scan)
+    db.commit()
+    for scan in created:
+        db.refresh(scan)
+        enqueue(scan.id)
+    return created
 
 
 @router.put("/{repo_id}/tags", response_model=RepositoryOut)

@@ -1,0 +1,136 @@
+"""Scan repository source files for personal data (PDn) identifiers from config."""
+from __future__ import annotations
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.core.logging import get_logger
+from app.services.analysis.file_analyzer import (
+    SKIP_DIRS,
+    BINARY_EXTENSIONS,
+    EXTENSION_LANG_MAP,
+    FILENAME_LANG_MAP,
+)
+from app.services.pii.config import PDnTypeConfig
+
+logger = get_logger(__name__)
+
+# Skip files larger than this (bytes) to avoid reading huge generated/binary-like files
+MAX_FILE_BYTES = 1 * 1024 * 1024  # 1 MB
+# Max lines to scan per file
+MAX_LINES_PER_FILE = 100_000
+
+
+@dataclass
+class PDnFinding:
+    """A single PDn identifier match in source code."""
+    pdn_type: str
+    file_path: str
+    line_number: int
+    matched_identifier: str
+
+
+def _is_source_file(path: Path) -> bool:
+    """True if file is a text source we should scan (same logic as file_analyzer)."""
+    if path.name in FILENAME_LANG_MAP:
+        return True
+    ext = path.suffix.lower()
+    if ext in BINARY_EXTENSIONS:
+        return False
+    return ext in EXTENSION_LANG_MAP
+
+
+def _build_identifier_patterns(
+    pdn_types: list[PDnTypeConfig],
+) -> list[tuple[str, str]]:
+    """Build (pdn_type_name, regex_pattern) for each identifier. Word boundary."""
+    result: list[tuple[str, str]] = []
+    for t in pdn_types:
+        for ident in t.identifiers:
+            if not ident:
+                continue
+            escaped = re.escape(ident)
+            # Word boundary: \b on both sides so "user_id" doesn't match "id" alone
+            pattern = r"\b" + escaped + r"\b"
+            result.append((t.name, pattern))
+    return result
+
+
+def scan_repository_for_pdn(
+    repo_path: Path,
+    pdn_types: list[PDnTypeConfig],
+) -> list[PDnFinding]:
+    """
+    Scan repo_path for PDn identifiers. Uses same skip rules as file_analyzer.
+    Returns list of findings (pdn_type, file_path relative to repo, line_number, matched_identifier).
+    """
+    if not pdn_types:
+        logger.info("pdn_scan_skipped", reason="no_pdn_types_configured")
+        return []
+
+    patterns = _build_identifier_patterns(pdn_types)
+    # Pre-compile regexes: (pdn_type, compiled_regex)
+    compiled: list[tuple[str, re.Pattern[str]]] = []
+    for name, pat in patterns:
+        try:
+            compiled.append((name, re.compile(pat)))
+        except re.error:
+            continue
+
+    logger.info(
+        "pdn_scan_started",
+        repo_path=str(repo_path),
+        pdn_types=len(pdn_types),
+        patterns=len(compiled),
+    )
+
+    findings: list[PDnFinding] = []
+    repo_path = repo_path.resolve()
+    files_scanned = 0
+
+    for item in repo_path.rglob("*"):
+        parts = item.relative_to(repo_path).parts
+        if any(p in SKIP_DIRS or p.startswith(".") for p in parts[:-1]):
+            continue
+        if item.is_dir() or not item.is_file():
+            continue
+        if not _is_source_file(item):
+            continue
+        try:
+            if item.stat().st_size > MAX_FILE_BYTES:
+                continue
+        except OSError:
+            continue
+
+        rel_path = str(item.relative_to(repo_path))
+        if "test" in rel_path.lower():
+            continue
+        try:
+            with open(item, encoding="utf-8", errors="replace") as f:
+                line_num = 0
+                for line in f:
+                    line_num += 1
+                    if line_num > MAX_LINES_PER_FILE:
+                        break
+                    for pdn_type, regex in compiled:
+                        m = regex.search(line)
+                        if m:
+                            findings.append(
+                                PDnFinding(
+                                    pdn_type=pdn_type,
+                                    file_path=rel_path,
+                                    line_number=line_num,
+                                    matched_identifier=m.group(0),
+                                )
+                            )
+            files_scanned += 1
+        except OSError:
+            continue
+
+    logger.info(
+        "pdn_scan_finished",
+        repo_path=str(repo_path),
+        files_scanned=files_scanned,
+        findings_count=len(findings),
+    )
+    return findings
