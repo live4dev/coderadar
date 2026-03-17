@@ -8,9 +8,6 @@ pdn_types:
       - personalId
       - PERSONAL_ID
       - personal-id
-      - spa_id
-      - spaID
-      - SPA_ID
   - name: passport_number
     identifiers:
       - passport_number
