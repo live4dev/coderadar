@@ -1,3 +1,4 @@
+import math
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -12,6 +13,7 @@ from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
     DeveloperOut, DeveloperListOut, DeveloperProfileOut, DeveloperLanguageOut,
     DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
+    DeveloperRatingOut, RatingBreakdown,
 )
 
 router = APIRouter(prefix="/developers", tags=["developers"])
@@ -191,6 +193,200 @@ def _set_developer_tags(db: Session, developer_id: int, tags: list[str]) -> None
     db.query(DeveloperTag).filter(DeveloperTag.developer_id == developer_id).delete()
     for tag in _normalize_tags(tags):
         db.add(DeveloperTag(developer_id=developer_id, tag=tag))
+
+
+_RATING_WEIGHTS = {
+    "default": (0.30, 0.25, 0.20, 0.15, 0.10),
+    "volume":  (0.50, 0.20, 0.15, 0.05, 0.10),
+    "quality": (0.20, 0.25, 0.15, 0.35, 0.05),
+    "breadth": (0.20, 0.20, 0.40, 0.10, 0.10),
+}
+
+
+def _minmax(values: list[float]) -> list[float]:
+    mn, mx = min(values), max(values)
+    if mx == mn:
+        return [0.0] * len(values)
+    return [(v - mn) / (mx - mn) for v in values]
+
+
+@router.get("/rating", response_model=list[DeveloperRatingOut])
+def get_developer_rating(
+    project_id: int | None = Query(None),
+    mode: str = Query("default", description="Weighting mode: default, volume, quality, breadth"),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Rank developers by a composite score computed from existing contribution data."""
+    if mode not in _RATING_WEIGHTS:
+        mode = "default"
+    w_prod, w_cons, w_br, w_ref, w_lon = _RATING_WEIGHTS[mode]
+
+    # --- Base aggregation (same pattern as list_developers) ---
+    if project_id is not None:
+        q_base = (
+            db.query(
+                Developer.id,
+                func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
+                func.coalesce(func.sum(DeveloperContribution.insertions), 0).label("total_insertions"),
+                func.coalesce(func.sum(DeveloperContribution.deletions), 0).label("total_deletions"),
+                func.coalesce(func.sum(DeveloperContribution.active_days), 0).label("active_days"),
+                func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
+                func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
+            )
+            .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
+            .join(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
+            .join(Scan, DeveloperContribution.scan_id == Scan.id)
+            .join(Repository, Scan.repository_id == Repository.id)
+            .filter(Repository.project_id == project_id)
+            .group_by(Developer.id)
+        )
+    else:
+        q_base = (
+            db.query(
+                Developer.id,
+                func.coalesce(func.sum(DeveloperContribution.commit_count), 0).label("total_commits"),
+                func.coalesce(func.sum(DeveloperContribution.insertions), 0).label("total_insertions"),
+                func.coalesce(func.sum(DeveloperContribution.deletions), 0).label("total_deletions"),
+                func.coalesce(func.sum(DeveloperContribution.active_days), 0).label("active_days"),
+                func.min(DeveloperContribution.first_commit_at).label("first_commit_at"),
+                func.max(DeveloperContribution.last_commit_at).label("last_commit_at"),
+            )
+            .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
+            .outerjoin(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
+            .group_by(Developer.id)
+        )
+
+    rows = q_base.all()
+    if not rows:
+        return []
+
+    dev_ids = [r.id for r in rows]
+
+    # --- Unique language count per developer ---
+    lang_counts_raw = (
+        db.query(
+            DeveloperProfile.developer_id,
+            func.count(func.distinct(DeveloperLanguageContribution.language_id)).label("lang_count"),
+        )
+        .join(DeveloperLanguageContribution, DeveloperLanguageContribution.profile_id == DeveloperProfile.id)
+        .filter(DeveloperProfile.developer_id.in_(dev_ids))
+        .group_by(DeveloperProfile.developer_id)
+        .all()
+    )
+    lang_count_map = {r.developer_id: r.lang_count for r in lang_counts_raw}
+
+    # --- Unique module count per developer ---
+    mod_counts_raw = (
+        db.query(
+            DeveloperProfile.developer_id,
+            func.count(func.distinct(DeveloperModuleContribution.module_id)).label("mod_count"),
+        )
+        .join(DeveloperModuleContribution, DeveloperModuleContribution.profile_id == DeveloperProfile.id)
+        .filter(DeveloperProfile.developer_id.in_(dev_ids))
+        .group_by(DeveloperProfile.developer_id)
+        .all()
+    )
+    mod_count_map = {r.developer_id: r.mod_count for r in mod_counts_raw}
+
+    # --- Primary language (max loc_added) per developer ---
+    from app.models import Language
+    primary_lang_raw = (
+        db.query(
+            DeveloperProfile.developer_id,
+            Language.name,
+            func.sum(DeveloperLanguageContribution.loc_added).label("total_loc"),
+        )
+        .join(DeveloperLanguageContribution, DeveloperLanguageContribution.profile_id == DeveloperProfile.id)
+        .join(Language, Language.id == DeveloperLanguageContribution.language_id)
+        .filter(DeveloperProfile.developer_id.in_(dev_ids))
+        .group_by(DeveloperProfile.developer_id, Language.id, Language.name)
+        .order_by(DeveloperProfile.developer_id, func.sum(DeveloperLanguageContribution.loc_added).desc())
+        .all()
+    )
+    primary_lang_map: dict[int, str] = {}
+    for r in primary_lang_raw:
+        if r.developer_id not in primary_lang_map:
+            primary_lang_map[r.developer_id] = r.name
+
+    # --- Display names ---
+    profiles_raw = (
+        db.query(DeveloperProfile.developer_id, DeveloperProfile.display_name, DeveloperProfile.canonical_username)
+        .filter(DeveloperProfile.developer_id.in_(dev_ids))
+        .all()
+    )
+    display_name_map: dict[int, str | None] = {}
+    for p in profiles_raw:
+        if p.developer_id not in display_name_map:
+            display_name_map[p.developer_id] = p.display_name or p.canonical_username
+
+    # --- Compute raw metrics ---
+    from datetime import timezone
+
+    def _span_days(row) -> int:
+        if row.first_commit_at and row.last_commit_at:
+            first = row.first_commit_at.replace(tzinfo=timezone.utc) if row.first_commit_at.tzinfo is None else row.first_commit_at
+            last = row.last_commit_at.replace(tzinfo=timezone.utc) if row.last_commit_at.tzinfo is None else row.last_commit_at
+            return max((last - first).days + 1, 1)
+        return 1
+
+    raw_prod = [math.log(int(r.total_commits) + 1) + math.log(int(r.total_insertions) + 1) for r in rows]
+    raw_cons = [
+        int(r.active_days) / _span_days(r)
+        for r in rows
+    ]
+    raw_br = [
+        float(lang_count_map.get(r.id, 0) + mod_count_map.get(r.id, 0))
+        for r in rows
+    ]
+    raw_ref = [
+        int(r.total_deletions) / (int(r.total_insertions) + int(r.total_deletions) + 1)
+        for r in rows
+    ]
+    raw_lon = [float(int(r.active_days)) for r in rows]
+
+    # --- Normalize ---
+    norm_prod = _minmax(raw_prod)
+    norm_cons = raw_cons  # already [0, 1]
+    norm_br = _minmax(raw_br)
+    norm_ref = raw_ref    # already [0, 1]
+    norm_lon = _minmax(raw_lon)
+
+    # --- Compute scores ---
+    scored = []
+    for i, r in enumerate(rows):
+        score = round(100.0 * (
+            w_prod * norm_prod[i]
+            + w_cons * norm_cons[i]
+            + w_br   * norm_br[i]
+            + w_ref  * norm_ref[i]
+            + w_lon  * norm_lon[i]
+        ), 1)
+        scored.append((score, i, r))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    result = []
+    for rank, (score, i, r) in enumerate(scored[:limit], start=1):
+        result.append(
+            DeveloperRatingOut(
+                developer_id=r.id,
+                display_name=display_name_map.get(r.id),
+                rank=rank,
+                score=score,
+                breakdown=RatingBreakdown(
+                    productivity=round(norm_prod[i], 4),
+                    consistency=round(norm_cons[i], 4),
+                    breadth=round(norm_br[i], 4),
+                    refactoring=round(norm_ref[i], 4),
+                    longevity=round(norm_lon[i], 4),
+                ),
+                primary_language=primary_lang_map.get(r.id),
+                total_commits=int(r.total_commits),
+                active_days=int(r.active_days),
+            )
+        )
+    return result
 
 
 @router.get("/{developer_id}", response_model=DeveloperOut)

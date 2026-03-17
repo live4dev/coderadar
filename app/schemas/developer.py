@@ -106,6 +106,25 @@ class ModuleOwnershipOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RatingBreakdown(BaseModel):
+    productivity: float
+    consistency: float
+    breadth: float
+    refactoring: float
+    longevity: float
+
+
+class DeveloperRatingOut(BaseModel):
+    developer_id: int
+    display_name: str | None
+    rank: int
+    score: float
+    breakdown: RatingBreakdown
+    primary_language: str | None
+    total_commits: int
+    active_days: int
+
+
 class IdentityOverrideCreate(BaseModel):
     project_id: int
     raw_name: str | None = None
