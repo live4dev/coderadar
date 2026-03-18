@@ -45,6 +45,11 @@ class ProjectSummaryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProjectUpdate(BaseModel):
+    name: str
+    description: str | None = None
+
+
 class TagsUpdate(BaseModel):
     """Replace entity tags with the given list."""
     tags: list[str] = []

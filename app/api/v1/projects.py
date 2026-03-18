@@ -10,7 +10,7 @@ from app.models import (
     Repository, Scan, ScanScore, ScanStatus,
 )
 from app.models.scan_score import ScoreDomain
-from app.schemas.project import ProjectCreate, ProjectOut, ProjectSummaryOut, TagsUpdate
+from app.schemas.project import ProjectCreate, ProjectOut, ProjectSummaryOut, ProjectUpdate, TagsUpdate
 from app.schemas.developer import DeveloperOut, DeveloperProfileOut
 from app.schemas.repository import (
     RepositoryOut,
@@ -223,6 +223,27 @@ def _set_project_tags(db: Session, project_id: int, tags: list[str]) -> None:
     db.query(ProjectTag).filter(ProjectTag.project_id == project_id).delete()
     for tag in _normalize_tags(tags):
         db.add(ProjectTag(project_id=project_id, tag=tag))
+
+
+@router.put("/{project_id}", response_model=ProjectOut)
+def update_project(project_id: int, body: ProjectUpdate, db: Session = Depends(get_db)):
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    project.name = body.name
+    project.description = body.description
+    db.commit()
+    project = db.query(Project).options(joinedload(Project.tags)).filter(Project.id == project_id).first()
+    return project
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(project_id: int, db: Session = Depends(get_db)):
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    db.delete(project)
+    db.commit()
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

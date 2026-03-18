@@ -63,5 +63,14 @@ class RepositoryWithLatestScanOut(BaseModel):
     tags: list[str] = []
 
 
+class RepositoryUpdate(BaseModel):
+    name: str
+    url: str
+    provider_type: str
+    default_branch: str | None = None
+    credentials_username: str | None = None
+    credentials_token: str | None = None  # None = clear credential
+
+
 class ScanTrigger(BaseModel):
     branch: str | None = None  # defaults to repository.default_branch
