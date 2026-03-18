@@ -27,6 +27,25 @@ class RepositoryTag(Base):
     repository: Mapped[Repository] = relationship("Repository", back_populates="tags")
 
 
+class RepositoryGitTag(Base):
+    """A git tag fetched from the repository during a scan (e.g. v1.0.0, release-2024)."""
+    __tablename__ = "repository_git_tags"
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_repository_git_tags_repository_id_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    repository_id: Mapped[int] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tagger_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tagger_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tagged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    repository: Mapped[Repository] = relationship("Repository", back_populates="git_tags")
+
+
 class ProviderType(str, enum.Enum):
     bitbucket = "bitbucket"
     gitlab = "gitlab"
@@ -68,4 +87,7 @@ class Repository(Base):
     )
     tags: Mapped[list[RepositoryTag]] = relationship(
         "RepositoryTag", back_populates="repository", cascade="all, delete-orphan"
+    )
+    git_tags: Mapped[list[RepositoryGitTag]] = relationship(
+        "RepositoryGitTag", back_populates="repository", cascade="all, delete-orphan"
     )

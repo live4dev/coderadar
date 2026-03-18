@@ -3,6 +3,17 @@ from datetime import datetime
 from pydantic import BaseModel, model_validator
 
 
+class RepositoryGitTagOut(BaseModel):
+    name: str
+    sha: str | None
+    message: str | None
+    tagger_name: str | None
+    tagger_email: str | None
+    tagged_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
 class RepositoryTagIn(BaseModel):
     name: str
     description: str | None = None

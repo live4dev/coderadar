@@ -18,6 +18,20 @@ class ScanOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    cancel_requested: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class ScanQueueItemOut(BaseModel):
+    id: int
+    repository_id: int
+    repository_name: str
+    status: str
+    branch: str
+    created_at: datetime
+    started_at: datetime | None
+    cancel_requested: bool
 
     model_config = {"from_attributes": True}
 

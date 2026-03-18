@@ -141,3 +141,69 @@ def parse_git_log_v2(repo_path: Path) -> list[CommitRecord]:
 
 def get_head_sha(repo_path: Path) -> str:
     return _run_git(repo_path, "rev-parse", "HEAD").strip()
+
+
+@dataclass
+class GitTagRecord:
+    name: str
+    sha: str | None
+    message: str | None
+    tagger_name: str | None
+    tagger_email: str | None
+    tagged_at: datetime | None
+
+
+def parse_git_tags(repo_path: Path) -> list[GitTagRecord]:
+    """
+    Return all git tags in the repository with metadata.
+    Uses `git tag -l` combined with per-tag `git cat-file` for annotated tags,
+    and `git log -1` for lightweight tags.
+    """
+    raw = _run_git(repo_path, "tag", "-l", "--sort=-version:refname")
+    tag_names = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not tag_names:
+        return []
+
+    # Batch: get type + dereferenced SHA for each tag
+    # format: <tag> <object-type> <sha> (using for-each-ref)
+    fmt = "%(refname:short)%09%(objecttype)%09%(objectname)%09%(creatordate:iso-strict)%09%(taggername)%09%(taggeremail)%09%(subject)"
+    refs_raw = _run_git(repo_path, "for-each-ref", "--format", fmt, "refs/tags/")
+
+    records: list[GitTagRecord] = []
+    for line in refs_raw.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        name, obj_type, sha, date_str, tagger_name, tagger_email, subject = (
+            parts[0].strip(),
+            parts[1].strip(),
+            parts[2].strip(),
+            parts[3].strip(),
+            parts[4].strip() or None,
+            parts[5].strip().lstrip("<").rstrip(">") or None,
+            parts[6].strip() or None,
+        )
+        tagged_at: datetime | None = None
+        if date_str:
+            try:
+                tagged_at = datetime.fromisoformat(date_str)
+            except ValueError:
+                pass
+
+        # For annotated tags, resolve the commit SHA the tag points to
+        commit_sha = sha
+        if obj_type == "tag":
+            deref = _run_git(repo_path, "rev-parse", f"{name}^{{commit}}").strip()
+            if deref:
+                commit_sha = deref
+
+        records.append(GitTagRecord(
+            name=name,
+            sha=commit_sha[:40] if commit_sha else None,
+            message=subject,
+            tagger_name=tagger_name,
+            tagger_email=tagger_email,
+            tagged_at=tagged_at,
+        ))
+
+    return records

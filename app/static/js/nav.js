@@ -29,6 +29,7 @@ export function updateNav() {
   if (state.view !== 'projects') {
     parts.push(`<a onclick="navigate('projects')">Projects</a>`);
   }
+  if (state.view === 'scans-queue') parts.push('<span class="sep">/</span><span>Scans Queue</span>');
   if (state.view === 'analytics') parts.push('<span class="sep">/</span><span>Analytics</span>');
   if (state.view === 'personal-data-report') parts.push('<span class="sep">/</span><span>Personal Data Report</span>');
   if (state.view === 'tech-map') parts.push('<span class="sep">/</span><span>Tech Map</span>');
@@ -64,12 +65,13 @@ export function updateNav() {
   document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
   document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
 
-  ['projects', 'developers-list', 'analytics', 'personal-data-report', 'tech-map', 'scans', 'summary', 'languages', 'scores', 'risks', 'developers', 'admin-projects', 'admin-repos', 'admin-developers'].forEach(id => {
+  ['projects', 'developers-list', 'analytics', 'personal-data-report', 'tech-map', 'scans-queue', 'scans', 'summary', 'languages', 'scores', 'risks', 'developers', 'admin-projects', 'admin-repos', 'admin-developers'].forEach(id => {
     const el = document.getElementById('nav-' + id);
     if (el) el.classList.toggle('active', false);
   });
 
   if (state.view === 'projects') document.getElementById('nav-projects').classList.add('active');
+  if (state.view === 'scans-queue') document.getElementById('nav-scans-queue')?.classList.add('active');
   if (state.view === 'developers' || state.view === 'developer') document.getElementById('nav-developers-list').classList.add('active');
   if (state.view === 'analytics') document.getElementById('nav-analytics').classList.add('active');
   if (state.view === 'personal-data-report') document.getElementById('nav-personal-data-report').classList.add('active');

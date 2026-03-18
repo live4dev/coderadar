@@ -1,6 +1,14 @@
 import { api } from '../api.js';
 import { fmt, setMain } from '../utils.js';
 
+let stateTechMapProject = '';  // '' = all projects
+
+export function techMapProjectChange() {
+  const sel = document.getElementById('tech-map-project');
+  if (sel) stateTechMapProject = sel.value;
+  renderTechMap();
+}
+
 const LANG_COLORS = [
   '#6366f1', '#22c55e', '#f59e0b', '#38bdf8', '#f97316',
   '#a78bfa', '#34d399', '#fb7185', '#60a5fa', '#facc15',
@@ -109,12 +117,25 @@ function statCard(label, value) {
 export async function renderTechMap() {
   setMain(`<h1 class="page-title">Tech Map</h1><div class="empty"><span class="spinner"></span> Loading…</div>`);
 
-  const data = await api('/analytics/tech-map');
+  const [projects, data] = await Promise.all([
+    api('/projects'),
+    api('/analytics/tech-map' + (stateTechMapProject ? `?project_id=${stateTechMapProject}` : '')),
+  ]);
+
+  const projectFilter = `
+    <div style="margin-bottom:20px;display:flex;align-items:center;gap:12px">
+      <label for="tech-map-project" style="font-size:13px;color:var(--text-muted)">Project</label>
+      <select id="tech-map-project" class="modal-input" style="width:220px;margin:0" onchange="techMapProjectChange()">
+        <option value="">All projects</option>
+        ${(projects || []).map(p => `<option value="${p.id}" ${String(p.id) === stateTechMapProject ? 'selected' : ''}>${p.name}</option>`).join('')}
+      </select>
+    </div>`;
 
   if (!data.repos || !data.repos.length) {
     setMain(`
       <h1 class="page-title">Tech Map</h1>
       <p class="page-subtitle">Accumulated language usage across all repositories.</p>
+      ${projectFilter}
       <div class="empty"><p>No scan data yet. Run scans on repositories to see the Tech Map.</p></div>
     `);
     return;
@@ -173,6 +194,7 @@ export async function renderTechMap() {
   setMain(`
     <h1 class="page-title">Tech Map</h1>
     <p class="page-subtitle">Accumulated language usage across all repositories (latest completed scan per repo).</p>
+    ${projectFilter}
     ${summaryHtml}
     ${langChartHtml}
     ${otherChartsHtml}

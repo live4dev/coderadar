@@ -21,6 +21,7 @@ class ScanStatus(str, enum.Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class ProjectType(str, enum.Enum):
@@ -47,6 +48,7 @@ class Scan(Base):
     branch: Mapped[str] = mapped_column(String(255), nullable=False)
     commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="0")
 
     # File stats
     total_files: Mapped[int | None] = mapped_column(Integer, nullable=True)

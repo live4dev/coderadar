@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType
-from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, RepositoryTagsUpdate, RepositoryTagIn, ScanTrigger
+from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType, RepositoryGitTag
+from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, RepositoryTagsUpdate, RepositoryTagIn, ScanTrigger, RepositoryGitTagOut
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
 
@@ -163,6 +163,19 @@ def list_scans(repo_id: int, db: Session = Depends(get_db)):
         db.query(Scan)
         .filter_by(repository_id=repo_id)
         .order_by(Scan.created_at.desc())
+        .all()
+    )
+
+
+@router.get("/{repo_id}/git-tags", response_model=list[RepositoryGitTagOut])
+def list_git_tags(repo_id: int, db: Session = Depends(get_db)):
+    repo = db.get(Repository, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    return (
+        db.query(RepositoryGitTag)
+        .filter_by(repository_id=repo_id)
+        .order_by(RepositoryGitTag.tagged_at.desc().nullslast())
         .all()
     )
 
