@@ -7,17 +7,21 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus
-from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse
+from app.models.scan_language import ScanLanguage
+from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 def _latest_scan_per_repo(db: Session, repo_ids: list[int]) -> dict[int, Scan]:
-    """Return repo_id -> latest completed scan."""
+    """Return repo_id -> latest completed scan (with languages eager-loaded)."""
     if not repo_ids:
         return {}
     latest = (
         db.query(Scan)
+        .options(
+            joinedload(Scan.languages).joinedload(ScanLanguage.language)
+        )
         .filter(
             Scan.repository_id.in_(repo_ids),
             Scan.status == ScanStatus.completed,
@@ -155,7 +159,8 @@ def get_tech_map(
             return []
 
     repo_entries: list[TechMapRepo] = []
-    lang_counts: dict[str, int] = defaultdict(int)
+    # language name -> accumulated stats across all repos
+    lang_stats: dict[str, dict] = defaultdict(lambda: {"total_loc": 0, "total_files": 0, "repo_count": 0})
     fw_counts: dict[str, int] = defaultdict(int)
     ci_counts: dict[str, int] = defaultdict(int)
     pm_counts: dict[str, int] = defaultdict(int)
@@ -171,8 +176,20 @@ def get_tech_map(
         infra_tools = _load(scan.infra_tools_json)
         linters = _load(scan.linters_json)
 
-        if scan.primary_language:
-            lang_counts[scan.primary_language] += 1
+        # Accumulate per-language LOC and files from ScanLanguage records
+        repo_languages: list[RepoLanguage] = []
+        for sl in sorted(scan.languages, key=lambda s: -(s.loc or 0)):
+            lang_name = sl.language.name
+            repo_languages.append(RepoLanguage(
+                name=lang_name,
+                loc=sl.loc or 0,
+                file_count=sl.file_count or 0,
+                percentage=sl.percentage or 0.0,
+            ))
+            lang_stats[lang_name]["total_loc"] += sl.loc or 0
+            lang_stats[lang_name]["total_files"] += sl.file_count or 0
+            lang_stats[lang_name]["repo_count"] += 1
+
         for f in frameworks:
             fw_counts[f] += 1
         if scan.ci_provider:
@@ -189,6 +206,7 @@ def get_tech_map(
             project_name=project_map.get(repo.project_id, ""),
             primary_language=scan.primary_language,
             project_type=scan.project_type.value if scan.project_type else None,
+            languages=repo_languages,
             frameworks=frameworks,
             package_managers=package_managers,
             ci_provider=scan.ci_provider,
@@ -199,10 +217,14 @@ def get_tech_map(
             has_terraform=bool(scan.has_terraform),
         ))
 
+    sorted_langs = dict(
+        sorted(lang_stats.items(), key=lambda x: -x[1]["total_loc"])
+    )
+
     return TechMapResponse(
         repos=repo_entries,
         tech_counts=TechCounts(
-            languages=dict(sorted(lang_counts.items(), key=lambda x: -x[1])),
+            languages={k: LanguageStat(**v) for k, v in sorted_langs.items()},
             frameworks=dict(sorted(fw_counts.items(), key=lambda x: -x[1])),
             ci_providers=dict(sorted(ci_counts.items(), key=lambda x: -x[1])),
             package_managers=dict(sorted(pm_counts.items(), key=lambda x: -x[1])),

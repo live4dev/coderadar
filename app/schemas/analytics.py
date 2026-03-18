@@ -12,6 +12,19 @@ class TreemapNode(BaseModel):
     children: list[TreemapNode] | None = None
 
 
+class RepoLanguage(BaseModel):
+    name: str
+    loc: int
+    file_count: int
+    percentage: float
+
+
+class LanguageStat(BaseModel):
+    total_loc: int
+    total_files: int
+    repo_count: int
+
+
 class TechMapRepo(BaseModel):
     repo_id: int
     repo_name: str
@@ -19,6 +32,7 @@ class TechMapRepo(BaseModel):
     project_name: str
     primary_language: str | None
     project_type: str | None
+    languages: list[RepoLanguage]
     frameworks: list[str]
     package_managers: list[str]
     ci_provider: str | None
@@ -30,7 +44,7 @@ class TechMapRepo(BaseModel):
 
 
 class TechCounts(BaseModel):
-    languages: dict[str, int]
+    languages: dict[str, LanguageStat]
     frameworks: dict[str, int]
     ci_providers: dict[str, int]
     package_managers: dict[str, int]
