@@ -112,3 +112,20 @@ class IdentityOverrideCreate(BaseModel):
     raw_email: str | None = None
     canonical_username: str
     note: str | None = None
+
+
+class DeveloperProfileUpdate(BaseModel):
+    display_name: str | None = None
+    primary_email: str | None = None
+
+
+class IdentityOverrideOut(BaseModel):
+    id: int
+    project_id: int | None
+    raw_name: str | None
+    raw_email: str | None
+    canonical_username: str
+    note: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

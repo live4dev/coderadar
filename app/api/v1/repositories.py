@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType
 from app.schemas.project import TagsUpdate
-from app.schemas.repository import RepositoryCreate, RepositoryOut, ScanTrigger
+from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, ScanTrigger
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
 
@@ -101,6 +101,35 @@ def set_repository_tags(repo_id: int, body: TagsUpdate, db: Session = Depends(ge
     db.refresh(repo)
     repo = db.query(Repository).options(joinedload(Repository.tags)).filter(Repository.id == repo_id).first()
     return repo
+
+
+@router.put("/{repo_id}", response_model=RepositoryOut)
+def update_repository(repo_id: int, body: RepositoryUpdate, db: Session = Depends(get_db)):
+    repo = db.get(Repository, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    try:
+        provider = ProviderType(body.provider_type)
+    except ValueError:
+        raise HTTPException(400, f"Unknown provider_type: {body.provider_type!r}. Use 'bitbucket', 'gitlab', or 'github'.")
+    repo.name = body.name
+    repo.url = body.url
+    repo.provider_type = provider
+    repo.default_branch = body.default_branch
+    repo.credentials_username = body.credentials_username
+    repo.credentials_token = body.credentials_token
+    db.commit()
+    repo = db.query(Repository).options(joinedload(Repository.tags)).filter(Repository.id == repo_id).first()
+    return repo
+
+
+@router.delete("/{repo_id}", status_code=204)
+def delete_repository(repo_id: int, db: Session = Depends(get_db)):
+    repo = db.get(Repository, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    db.delete(repo)
+    db.commit()
 
 
 @router.post("/{repo_id}/scan", response_model=ScanOut, status_code=202)

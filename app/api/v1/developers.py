@@ -12,6 +12,7 @@ from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
     DeveloperOut, DeveloperListOut, DeveloperProfileOut, DeveloperLanguageOut,
     DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
+    DeveloperProfileUpdate, IdentityOverrideOut,
 )
 
 router = APIRouter(prefix="/developers", tags=["developers"])
@@ -243,6 +244,18 @@ def list_developer_profiles(developer_id: int, db: Session = Depends(get_db)):
     return [_profile_to_out(p) for p in profiles]
 
 
+@router.get("/{developer_id}/identity-overrides", response_model=list[IdentityOverrideOut])
+def list_developer_identity_overrides(developer_id: int, db: Session = Depends(get_db)):
+    """List identity overrides that map to any of this developer's profiles."""
+    dev = db.get(Developer, developer_id)
+    if not dev:
+        raise HTTPException(404, "Developer not found")
+    usernames = [p.canonical_username for p in db.query(DeveloperProfile).filter_by(developer_id=developer_id).all()]
+    if not usernames:
+        return []
+    return db.query(IdentityOverride).filter(IdentityOverride.canonical_username.in_(usernames)).all()
+
+
 @router.get("/{developer_id}/contributions", response_model=DeveloperContributionsSummaryOut)
 def get_developer_contributions(
     developer_id: int,
@@ -428,6 +441,27 @@ def get_developer_modules(
         )
         for r in rows
     ]
+
+
+@router.put("/profiles/{profile_id}", response_model=DeveloperProfileOut)
+def update_developer_profile(profile_id: int, body: DeveloperProfileUpdate, db: Session = Depends(get_db)):
+    profile = db.get(DeveloperProfile, profile_id)
+    if not profile:
+        raise HTTPException(404, "Developer profile not found")
+    profile.display_name = body.display_name
+    profile.primary_email = body.primary_email
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_out(profile)
+
+
+@router.delete("/identity-overrides/{override_id}", status_code=204)
+def delete_identity_override(override_id: int, db: Session = Depends(get_db)):
+    override = db.get(IdentityOverride, override_id)
+    if not override:
+        raise HTTPException(404, "Identity override not found")
+    db.delete(override)
+    db.commit()
 
 
 @router.post("/identity-overrides", status_code=201)
