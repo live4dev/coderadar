@@ -17,6 +17,8 @@ from app.schemas.repository import (
     RepositoryWithLatestScanOut,
     LatestScanOut,
 )
+from app.schemas.scan import ScanOut
+from app.services.scanning.queue import enqueue
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -272,6 +274,27 @@ def list_project_repositories(project_id: int, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(404, "Project not found")
     return db.query(Repository).options(joinedload(Repository.tags)).filter_by(project_id=project_id).order_by(Repository.id).all()
+
+
+@router.post("/{project_id}/scan-all", response_model=list[ScanOut], status_code=202)
+def trigger_project_scan_all(project_id: int, db: Session = Depends(get_db)):
+    """Create a pending scan for every repository in the project."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    repos = db.query(Repository).filter_by(project_id=project_id).all()
+    if not repos:
+        return []
+    created = []
+    for repo in repos:
+        scan = Scan(repository_id=repo.id, branch=repo.default_branch or "", status=ScanStatus.pending)
+        db.add(scan)
+        created.append(scan)
+    db.commit()
+    for scan in created:
+        db.refresh(scan)
+        enqueue(scan.id)
+    return created
 
 
 REPO_SORT_FIELDS = {"name", "id", "loc", "files", "project_type", "last_updated", "primary_language", "score"}

@@ -36,7 +36,8 @@ export async function renderAdminProjects() {
       <td style="color:var(--text-muted);font-size:12px">${esc(p.description || '—')}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtDate(p.created_at)}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
-        <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminProjEdit(${p.id})">Edit</button>
+        <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminProjScanAll(${p.id})">Rescan Repos</button>
+        <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminProjEdit(${p.id})">Edit</button>
         <button class="btn btn-danger" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminProjDelete(${p.id}, ${JSON.stringify(esc(p.name))})">Delete</button>
       </td>
     </tr>`).join('');
@@ -109,4 +110,10 @@ window.adminProjDelete = function(id, name) {
       navigate('admin-projects');
     }
   );
+};
+
+window.adminProjScanAll = async function(id) {
+  const res = await fetch(API + '/projects/' + id + '/scan-all', { method: 'POST' });
+  const scans = await res.json();
+  alert(`${scans.length} scan(s) queued.`);
 };

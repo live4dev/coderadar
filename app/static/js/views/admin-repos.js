@@ -17,6 +17,7 @@ export async function renderAdminRepos() {
         ${projects.map(p => `<option value="${p.id}" ${state.adminRepoProjectFilter == p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
       </select>
       <button class="btn btn-primary" onclick="adminRepoNew()">+ Add Repository</button>
+      <button class="btn btn-outline" onclick="adminRepoScanAll()">Rescan All Repositories</button>
     </div>`;
 
   let repos = [];
@@ -94,7 +95,8 @@ export async function renderAdminRepos() {
         <td style="color:var(--text-muted);font-size:12px">${esc(r.default_branch || '—')}</td>
         <td style="font-size:12px;color:var(--text-muted)">${fmtDate(r.created_at)}</td>
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
-          <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminRepoEdit(${r.id})">Edit</button>
+          <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminRepoScan(${r.id})">Rescan</button>
+          <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminRepoEdit(${r.id})">Edit</button>
           <button class="btn btn-danger" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminRepoDelete(${r.id}, ${JSON.stringify(esc(r.name))})">Delete</button>
         </td>
       </tr>`).join('');
@@ -178,4 +180,15 @@ window.adminRepoDelete = function(id, name) {
       navigate('admin-repos');
     }
   );
+};
+
+window.adminRepoScan = async function(id) {
+  await fetch(API + '/repositories/' + id + '/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  alert('Scan queued.');
+};
+
+window.adminRepoScanAll = async function() {
+  const res = await fetch(API + '/repositories/scan-all', { method: 'POST' });
+  const scans = await res.json();
+  alert(`${scans.length} scan(s) queued.`);
 };
