@@ -63,6 +63,16 @@ class Scan(Base):
     )
     primary_language: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Stack details (stored as JSON arrays in Text columns)
+    frameworks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    package_managers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ci_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    infra_tools_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    has_docker: Mapped[bool | None] = mapped_column(nullable=True)
+    has_kubernetes: Mapped[bool | None] = mapped_column(nullable=True)
+    has_terraform: Mapped[bool | None] = mapped_column(nullable=True)
+
     # Complexity summary
     avg_file_loc: Mapped[float | None] = mapped_column(Float, nullable=True)
     large_files_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

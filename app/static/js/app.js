@@ -14,6 +14,7 @@ import { renderDevelopersSummary, devSort, devSearchInput } from './views/develo
 import { renderDeveloperProfile } from './views/developer-profile.js';
 import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance } from './views/analytics.js';
 import { renderPersonalDataReport } from './views/personal-data-report.js';
+import { renderTechMap } from './views/tech-map.js';
 import { setMain, showError } from './utils.js';
 
 async function render() {
@@ -29,6 +30,7 @@ async function render() {
     else if (state.view === 'developer')       await renderDeveloperProfile();
     else if (state.view === 'analytics')       await renderAnalytics();
     else if (state.view === 'personal-data-report') await renderPersonalDataReport();
+    else if (state.view === 'tech-map')            await renderTechMap();
     else if (state.view === 'admin-projects')   await renderAdminProjects();
     else if (state.view === 'admin-repos')      await renderAdminRepos();
     else if (state.view === 'admin-developers') await renderAdminDevelopers();
@@ -64,6 +66,7 @@ document.getElementById('nav-projects').addEventListener('click', () => navigate
 document.getElementById('nav-developers-list').addEventListener('click', () => navigate('developers'));
 document.getElementById('nav-analytics').addEventListener('click', () => navigate('analytics'));
 document.getElementById('nav-personal-data-report').addEventListener('click', () => navigate('personal-data-report'));
+document.getElementById('nav-tech-map').addEventListener('click', () => navigate('tech-map'));
 document.getElementById('nav-scans').addEventListener('click', () => navigate('scans'));
 document.getElementById('nav-admin-projects').addEventListener('click', () => navigate('admin-projects'));
 document.getElementById('nav-admin-repos').addEventListener('click', () => navigate('admin-repos'));

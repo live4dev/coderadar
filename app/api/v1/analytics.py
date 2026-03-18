@@ -1,10 +1,13 @@
 """Analytics API: treemap tree and similar."""
+import json
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus
-from app.schemas.analytics import TreemapNode
+from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -112,4 +115,97 @@ def get_treemap(
         value=root_value,
         type="root",
         children=project_nodes,
+    )
+
+
+@router.get("/tech-map", response_model=TechMapResponse)
+def get_tech_map(
+    project_id: int | None = Query(None, description="Optional: limit to one project"),
+    db: Session = Depends(get_db),
+):
+    """Return technology stack summary for all repositories (latest completed scan per repo)."""
+    projects = (
+        db.query(Project)
+        .order_by(Project.id)
+        .all()
+    )
+    if project_id is not None:
+        projects = [p for p in projects if p.id == project_id]
+        if not projects:
+            raise HTTPException(404, "Project not found")
+
+    project_map = {p.id: p.name for p in projects}
+    repo_ids = []
+    repos_by_id: dict[int, Repository] = {}
+
+    for p in projects:
+        repos = db.query(Repository).filter_by(project_id=p.id).all()
+        for r in repos:
+            repo_ids.append(r.id)
+            repos_by_id[r.id] = r
+
+    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+
+    def _load(col: str | None) -> list[str]:
+        if not col:
+            return []
+        try:
+            return json.loads(col)
+        except Exception:
+            return []
+
+    repo_entries: list[TechMapRepo] = []
+    lang_counts: dict[str, int] = defaultdict(int)
+    fw_counts: dict[str, int] = defaultdict(int)
+    ci_counts: dict[str, int] = defaultdict(int)
+    pm_counts: dict[str, int] = defaultdict(int)
+    infra_counts: dict[str, int] = defaultdict(int)
+
+    for rid, repo in repos_by_id.items():
+        scan = scan_by_repo.get(rid)
+        if scan is None:
+            continue
+
+        frameworks = _load(scan.frameworks_json)
+        package_managers = _load(scan.package_managers_json)
+        infra_tools = _load(scan.infra_tools_json)
+        linters = _load(scan.linters_json)
+
+        if scan.primary_language:
+            lang_counts[scan.primary_language] += 1
+        for f in frameworks:
+            fw_counts[f] += 1
+        if scan.ci_provider:
+            ci_counts[scan.ci_provider] += 1
+        for pm in package_managers:
+            pm_counts[pm] += 1
+        for it in infra_tools:
+            infra_counts[it] += 1
+
+        repo_entries.append(TechMapRepo(
+            repo_id=rid,
+            repo_name=repo.name,
+            project_id=repo.project_id,
+            project_name=project_map.get(repo.project_id, ""),
+            primary_language=scan.primary_language,
+            project_type=scan.project_type.value if scan.project_type else None,
+            frameworks=frameworks,
+            package_managers=package_managers,
+            ci_provider=scan.ci_provider,
+            infra_tools=infra_tools,
+            linters=linters,
+            has_docker=bool(scan.has_docker),
+            has_kubernetes=bool(scan.has_kubernetes),
+            has_terraform=bool(scan.has_terraform),
+        ))
+
+    return TechMapResponse(
+        repos=repo_entries,
+        tech_counts=TechCounts(
+            languages=dict(sorted(lang_counts.items(), key=lambda x: -x[1])),
+            frameworks=dict(sorted(fw_counts.items(), key=lambda x: -x[1])),
+            ci_providers=dict(sorted(ci_counts.items(), key=lambda x: -x[1])),
+            package_managers=dict(sorted(pm_counts.items(), key=lambda x: -x[1])),
+            infra_tools=dict(sorted(infra_counts.items(), key=lambda x: -x[1])),
+        ),
     )

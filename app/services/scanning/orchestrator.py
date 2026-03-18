@@ -85,6 +85,15 @@ def run_scan(scan_id: int, db: Session) -> None:
         stack = detect_stack(repo_path, file_result.languages)
         scan.project_type = stack.project_type  # type: ignore[assignment]
         scan.primary_language = stack.primary_language
+        import json as _json
+        scan.frameworks_json = _json.dumps(stack.frameworks)
+        scan.package_managers_json = _json.dumps(stack.package_managers)
+        scan.ci_provider = stack.ci_provider
+        scan.infra_tools_json = _json.dumps(stack.infra_tools)
+        scan.linters_json = _json.dumps(stack.linters + stack.formatters)
+        scan.has_docker = stack.has_docker
+        scan.has_kubernetes = stack.has_kubernetes
+        scan.has_terraform = stack.has_terraform
 
         deps = parse_deps(repo_path)
         for d in deps:
