@@ -306,7 +306,7 @@ model {
       }
       component contributorAggregator 'Contributor Aggregator' {
         technology 'Python'
-        description 'Groups commits by canonical username.
+        description 'Groups commits by developer profile.
         Computes: commit_count, insertions, deletions,
         files_changed, active_days, first/last commit.
         Breakdown by language and by module (top-level dir).'
@@ -377,15 +377,17 @@ model {
 
     store database 'Database' {
       technology 'SQLite · SQLAlchemy 2 · Alembic'
-      description '16 ORM tables. WAL mode enabled.
+      description '20 ORM tables. WAL mode enabled.
       Foreign keys enforced. PostgreSQL-ready.
 
-      Project → Repository → Scan
+      Project → Repository → Scan · ProjectTag · RepositoryTag
       Scan → ScanLanguage, ScanScore, ScanRisk, Dependency
       Scan → DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution
       Scan → ScanPersonalDataFinding
-      Project → Developer → DeveloperIdentity, IdentityOverride
-      Repository → Module'
+      Developer → DeveloperProfile → DeveloperIdentity · DeveloperTag
+      Project → IdentityOverride
+      Repository → Module
+      Language ← ScanLanguage'
     }
   }
 
@@ -559,7 +561,7 @@ views {
   view dataModel {
     title 'Data Model — Key Entities (L3)'
     description 'Core ORM entities and their relationships.
-    15 SQLAlchemy tables in SQLite (PostgreSQL-ready).'
+    20 SQLAlchemy tables in SQLite (PostgreSQL-ready).'
 
     include coderadar.database
     include coderadar.api
