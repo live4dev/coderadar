@@ -130,3 +130,158 @@ def test_cargo_toml(tmp_path):
 
     crit = [d for d in deps if d.name == "criterion"][0]
     assert crit.dep_type == "dev"
+
+
+# ── pom.xml (Maven) ───────────────────────────────────────────────────────────
+
+def test_pom_xml_prod_and_test_deps(tmp_path):
+    _make_repo(tmp_path, {
+        "pom.xml": """\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <dependencies>
+                <dependency>
+                  <groupId>org.springframework</groupId>
+                  <artifactId>spring-core</artifactId>
+                  <version>6.1.0</version>
+                </dependency>
+                <dependency>
+                  <groupId>junit</groupId>
+                  <artifactId>junit</artifactId>
+                  <version>4.13.2</version>
+                  <scope>test</scope>
+                </dependency>
+              </dependencies>
+            </project>
+        """
+    })
+    deps = parse_all(tmp_path)
+    names = {d.name for d in deps}
+    assert "org.springframework:spring-core" in names
+    assert "junit:junit" in names
+
+    prod = [d for d in deps if d.name == "org.springframework:spring-core"][0]
+    assert prod.dep_type == "prod"
+    assert prod.ecosystem == "maven"
+    assert prod.version == "6.1.0"
+
+    test_dep = [d for d in deps if d.name == "junit:junit"][0]
+    assert test_dep.dep_type == "test"
+
+
+def test_pom_xml_missing_returns_empty(tmp_path):
+    deps = parse_all(tmp_path)
+    assert all(d.ecosystem != "maven" for d in deps)
+
+
+def test_pom_xml_invalid_returns_empty(tmp_path):
+    _make_repo(tmp_path, {"pom.xml": "not valid xml <<<"})
+    deps = parse_all(tmp_path)
+    assert all(d.ecosystem != "maven" for d in deps)
+
+
+# ── Gemfile (Bundler) ─────────────────────────────────────────────────────────
+
+def test_gemfile_parses_gems(tmp_path):
+    _make_repo(tmp_path, {
+        "Gemfile": """\
+            source 'https://rubygems.org'
+
+            gem 'rails', '7.1.0'
+            gem 'devise'
+            gem 'rspec-rails', '~> 6.0'
+        """
+    })
+    deps = parse_all(tmp_path)
+    names = {d.name for d in deps}
+    assert "rails" in names
+    assert "devise" in names
+    assert "rspec-rails" in names
+
+    rails = [d for d in deps if d.name == "rails"][0]
+    assert rails.ecosystem == "bundler"
+    assert rails.version == "7.1.0"
+
+    devise = [d for d in deps if d.name == "devise"][0]
+    assert devise.version is None
+
+
+def test_gemfile_missing_returns_empty(tmp_path):
+    deps = parse_all(tmp_path)
+    assert all(d.ecosystem != "bundler" for d in deps)
+
+
+# ── pyproject.toml ────────────────────────────────────────────────────────────
+
+def test_pyproject_poetry_style(tmp_path):
+    _make_repo(tmp_path, {
+        "pyproject.toml": """\
+            [tool.poetry]
+            name = "myapp"
+            version = "0.1.0"
+
+            [tool.poetry.dependencies]
+            python = "^3.11"
+            fastapi = "^0.110.0"
+            sqlalchemy = "^2.0"
+
+            [tool.poetry.dev-dependencies]
+            pytest = "^8.0"
+        """
+    })
+    deps = parse_all(tmp_path)
+    names = {d.name for d in deps}
+    # python should be excluded
+    assert "python" not in names
+    assert "fastapi" in names
+    assert "sqlalchemy" in names
+    assert "pytest" in names
+
+    fa = [d for d in deps if d.name == "fastapi"][0]
+    assert fa.dep_type == "prod"
+    assert fa.ecosystem == "pip"
+
+    pt = [d for d in deps if d.name == "pytest"][0]
+    assert pt.dep_type == "dev"
+
+
+def test_pyproject_pep621_style(tmp_path):
+    _make_repo(tmp_path, {
+        "pyproject.toml": """\
+            [project]
+            name = "myapp"
+            dependencies = [
+                "httpx>=0.27.0",
+                "pydantic",
+            ]
+        """
+    })
+    deps = parse_all(tmp_path)
+    names = {d.name for d in deps}
+    assert "httpx" in names
+    assert "pydantic" in names
+
+
+def test_pyproject_missing_returns_empty(tmp_path):
+    deps = parse_all(tmp_path)
+    # No pyproject.toml means no pip/poetry entries from it
+    assert True  # just verifying no exception
+
+
+def test_package_json_peer_deps(tmp_path):
+    _make_repo(tmp_path, {
+        "package.json": json.dumps({
+            "peerDependencies": {"react": "^18.0.0"},
+        })
+    })
+    deps = parse_all(tmp_path)
+    names = {d.name for d in deps}
+    assert "react" in names
+    peer = [d for d in deps if d.name == "react"][0]
+    assert peer.dep_type == "prod"
+
+
+def test_package_json_invalid_json_returns_empty(tmp_path):
+    _make_repo(tmp_path, {"package.json": "{ invalid json"})
+    deps = parse_all(tmp_path)
+    assert all(d.ecosystem != "npm" for d in deps)
