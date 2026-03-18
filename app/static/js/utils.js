@@ -24,7 +24,13 @@ export function fmtBytes(n) {
 
 export function tagsChips(tags) {
   if (!tags || !tags.length) return '—';
-  return '<div class="tags-chips">' + tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>';
+  return '<div class="tags-chips">' + tags.map(t => {
+    if (t && typeof t === 'object') {
+      const tooltip = t.description ? ` title="${esc(t.description)}"` : '';
+      return `<span class="tag"${tooltip}>${esc(t.name)}</span>`;
+    }
+    return '<span class="tag">' + esc(t) + '</span>';
+  }).join('') + '</div>';
 }
 
 export function scoreClass(s) {

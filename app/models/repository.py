@@ -21,6 +21,8 @@ class RepositoryTag(Base):
         ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
     )
     tag: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     repository: Mapped[Repository] = relationship("Repository", back_populates="tags")
 

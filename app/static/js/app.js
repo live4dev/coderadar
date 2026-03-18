@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { pathToState, stateToPath } from './router.js';
 import { initNav, navigate, showTab, updateNav } from './nav.js';
-import { initModal, openEditTagsModal, closeEditTagsModal, saveEditTagsModal } from './modal.js';
+import { initModal, openEditTagsModal, closeEditTagsModal, saveEditTagsModal, addTagRow } from './modal.js';
 import { renderAdminProjects } from './views/admin-projects.js';
 import { renderAdminRepos } from './views/admin-repos.js';
 import { renderAdminDevelopers } from './views/admin-developers.js';
@@ -41,6 +41,7 @@ window.showTab = showTab;
 window.openEditTagsModal = openEditTagsModal;
 window.closeEditTagsModal = closeEditTagsModal;
 window.saveEditTagsModal = saveEditTagsModal;
+window.addTagRow = addTagRow;
 window.projSort = projSort;
 window.projSearchInput = projSearchInput;
 window.repoSort = repoSort;

@@ -15,6 +15,7 @@ from app.schemas.developer import DeveloperOut, DeveloperProfileOut
 from app.schemas.repository import (
     RepositoryOut,
     RepositoryWithLatestScanOut,
+    RepositoryTagOut,
     LatestScanOut,
 )
 from app.schemas.scan import ScanOut
@@ -384,7 +385,7 @@ def list_project_repositories_with_latest_scan(
                 last_commit_sha=r.last_commit_sha,
                 created_at=r.created_at,
                 latest_scan=latest_scan,
-                tags=[t.tag for t in r.tags],
+                tags=[RepositoryTagOut(name=t.tag, description=t.description, date=t.created_at) for t in r.tags],
             )
         )
     return _filter_and_sort_repos(result, q, has_scans, sort_by, order)

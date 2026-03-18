@@ -3,31 +3,28 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType
-from app.schemas.project import TagsUpdate
-from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, ScanTrigger
+from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, RepositoryTagsUpdate, RepositoryTagIn, ScanTrigger
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
-def _normalize_tags(tags: list[str]) -> list[str]:
-    seen = set()
+def _normalize_tags(tags: list[RepositoryTagIn]) -> list[RepositoryTagIn]:
+    seen: set[str] = set()
     out = []
     for t in tags:
-        if not isinstance(t, str):
-            continue
-        s = t.strip()[:128]
-        if s and s not in seen:
-            seen.add(s)
-            out.append(s)
+        name = t.name.strip()[:128]
+        if name and name not in seen:
+            seen.add(name)
+            out.append(RepositoryTagIn(name=name, description=t.description))
     return out
 
 
-def _set_repository_tags(db: Session, repository_id: int, tags: list[str]) -> None:
+def _set_repository_tags(db: Session, repository_id: int, tags: list[RepositoryTagIn]) -> None:
     db.query(RepositoryTag).filter(RepositoryTag.repository_id == repository_id).delete()
-    for tag in _normalize_tags(tags):
-        db.add(RepositoryTag(repository_id=repository_id, tag=tag))
+    for t in _normalize_tags(tags):
+        db.add(RepositoryTag(repository_id=repository_id, tag=t.name, description=t.description))
 
 
 @router.post("", response_model=RepositoryOut, status_code=201)
@@ -92,7 +89,7 @@ def trigger_scan_all(db: Session = Depends(get_db)):
 
 
 @router.put("/{repo_id}/tags", response_model=RepositoryOut)
-def set_repository_tags(repo_id: int, body: TagsUpdate, db: Session = Depends(get_db)):
+def set_repository_tags(repo_id: int, body: RepositoryTagsUpdate, db: Session = Depends(get_db)):
     repo = db.get(Repository, repo_id)
     if not repo:
         raise HTTPException(404, "Repository not found")

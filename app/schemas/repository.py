@@ -3,6 +3,21 @@ from datetime import datetime
 from pydantic import BaseModel, model_validator
 
 
+class RepositoryTagIn(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class RepositoryTagOut(BaseModel):
+    name: str
+    description: str | None
+    date: datetime | None
+
+
+class RepositoryTagsUpdate(BaseModel):
+    tags: list[RepositoryTagIn] = []
+
+
 class RepositoryCreate(BaseModel):
     project_id: int
     name: str
@@ -11,7 +26,7 @@ class RepositoryCreate(BaseModel):
     default_branch: str | None = None
     credentials_username: str | None = None
     credentials_token: str | None = None
-    tags: list[str] = []
+    tags: list[RepositoryTagIn] = []
 
 
 class RepositoryOut(BaseModel):
@@ -23,7 +38,7 @@ class RepositoryOut(BaseModel):
     default_branch: str | None
     last_commit_sha: str | None
     created_at: datetime
-    tags: list[str] = []
+    tags: list[RepositoryTagOut] = []
 
     model_config = {"from_attributes": True}
 
@@ -32,7 +47,7 @@ class RepositoryOut(BaseModel):
     def _tags_from_orm(cls, data, handler):
         if not isinstance(data, dict) and hasattr(data, "tags") and data.tags is not None:
             d = {f: getattr(data, f) for f in ("id", "project_id", "name", "url", "provider_type", "default_branch", "last_commit_sha", "created_at")}
-            d["tags"] = [t.tag for t in data.tags]
+            d["tags"] = [{"name": t.tag, "description": t.description, "date": t.created_at} for t in data.tags]
             return handler(d)
         return handler(data)
 
@@ -60,7 +75,7 @@ class RepositoryWithLatestScanOut(BaseModel):
     last_commit_sha: str | None
     created_at: datetime
     latest_scan: LatestScanOut | None = None
-    tags: list[str] = []
+    tags: list[RepositoryTagOut] = []
 
 
 class RepositoryUpdate(BaseModel):
