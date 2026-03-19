@@ -121,6 +121,13 @@ class DeveloperProfileUpdate(BaseModel):
     primary_email: str | None = None
 
 
+class DeveloperListPage(BaseModel):
+    items: list[DeveloperListOut]
+    total: int
+    has_more: bool
+    total_commits_all: int
+
+
 class IdentityOverrideOut(BaseModel):
     id: int
     project_id: int | None
