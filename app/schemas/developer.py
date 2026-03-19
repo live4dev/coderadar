@@ -138,3 +138,8 @@ class IdentityOverrideOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeveloperDailyActivityOut(BaseModel):
+    date: str   # "YYYY-MM-DD"
+    count: int

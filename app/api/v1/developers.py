@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models import (
     Developer, DeveloperTag, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
-    DeveloperModuleContribution, IdentityOverride, Language, Module, Project,
+    DeveloperModuleContribution, DeveloperDailyActivity, IdentityOverride, Language, Module, Project,
     Repository, Scan,
 )
 from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
     DeveloperOut, DeveloperListOut, DeveloperListPage, DeveloperProfileOut, DeveloperLanguageOut,
     DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
-    DeveloperProfileUpdate, IdentityOverrideOut,
+    DeveloperProfileUpdate, IdentityOverrideOut, DeveloperDailyActivityOut,
 )
 
 router = APIRouter(prefix="/developers", tags=["developers"])
@@ -470,6 +470,28 @@ def get_developer_modules(
         )
         for r in rows
     ]
+
+
+@router.get("/{developer_id}/activity", response_model=list[DeveloperDailyActivityOut])
+def get_developer_activity(developer_id: int, db: Session = Depends(get_db)):
+    """Daily commit activity for a developer (aggregated across all their profiles)."""
+    dev = db.get(Developer, developer_id)
+    if not dev:
+        raise HTTPException(404, "Developer not found")
+    profile_ids = [r[0] for r in db.query(DeveloperProfile.id).filter(DeveloperProfile.developer_id == developer_id).all()]
+    if not profile_ids:
+        return []
+    rows = (
+        db.query(
+            DeveloperDailyActivity.commit_date,
+            func.sum(DeveloperDailyActivity.commit_count).label("count"),
+        )
+        .filter(DeveloperDailyActivity.profile_id.in_(profile_ids))
+        .group_by(DeveloperDailyActivity.commit_date)
+        .order_by(DeveloperDailyActivity.commit_date)
+        .all()
+    )
+    return [DeveloperDailyActivityOut(date=str(r.commit_date), count=int(r.count)) for r in rows]
 
 
 @router.put("/profiles/{profile_id}", response_model=DeveloperProfileOut)

@@ -1,7 +1,7 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
 from typing import TYPE_CHECKING
-from sqlalchemy import Integer, Float, DateTime, ForeignKey
+from sqlalchemy import Integer, Float, DateTime, ForeignKey, Date, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -86,3 +86,16 @@ class DeveloperModuleContribution(Base):
         "DeveloperProfile", back_populates="module_contributions"
     )
     module: Mapped[Module] = relationship("Module", back_populates="developer_contributions")
+
+
+class DeveloperDailyActivity(Base):
+    """Per-day commit count for a developer profile (across all scans/history)."""
+    __tablename__ = "developer_daily_activity"
+    __table_args__ = (UniqueConstraint("profile_id", "commit_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("developer_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    commit_date: Mapped[date] = mapped_column(Date, nullable=False)
+    commit_count: Mapped[int] = mapped_column(Integer, default=0)

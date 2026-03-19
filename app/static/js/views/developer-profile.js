@@ -61,11 +61,12 @@ export async function renderDeveloperProfile() {
   state.modSortOrder = 'desc';
   state.devModules = null;
 
-  const [dev, contributions, languages, modules] = await Promise.all([
+  const [dev, contributions, languages, modules, activity] = await Promise.all([
     api('/developers/' + state.developerId),
     api('/developers/' + state.developerId + '/contributions'),
     api('/developers/' + state.developerId + '/languages'),
     api('/developers/' + state.developerId + '/modules'),
+    api('/developers/' + state.developerId + '/activity'),
   ]);
 
   const statsRow = `
@@ -147,6 +148,15 @@ export async function renderDeveloperProfile() {
       `).join('')}
     </div>` : '';
 
+  // Build calendar data for ECharts (last 365 days)
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(today.getFullYear() - 1);
+  const calStart = yearAgo.toISOString().slice(0, 10);
+  const calEnd = today.toISOString().slice(0, 10);
+  const calData = activity.map(d => [d.date, d.count]);
+  const maxCount = calData.reduce((m, d) => Math.max(m, d[1]), 0);
+
   setMain(`
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
       <div>
@@ -161,7 +171,54 @@ export async function renderDeveloperProfile() {
       First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
     </div>
     ${statsRow}
+    <div style="margin-top:24px;margin-bottom:8px">
+      <div class="section-header"><div class="section-title">Contribution activity</div></div>
+      <div id="contrib-calendar" style="height:160px;width:100%"></div>
+    </div>
     ${langsHtml}
     ${modsHtml ? '<div style="margin-top:28px">' + modsHtml + '</div>' : ''}
   `);
+
+  // Render ECharts contribution calendar
+  const calEl = document.getElementById('contrib-calendar');
+  if (calEl && window.echarts) {
+    const chart = window.echarts.init(calEl, null, { renderer: 'svg' });
+    chart.setOption({
+      tooltip: {
+        formatter: p => `${p.data[0]}<br/><b>${p.data[1]} commit${p.data[1] !== 1 ? 's' : ''}</b>`,
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: Math.max(maxCount, 1),
+        inRange: {
+          color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+        },
+      },
+      calendar: {
+        range: [calStart, calEnd],
+        cellSize: [13, 13],
+        left: 36,
+        right: 12,
+        top: 20,
+        bottom: 10,
+        itemStyle: { borderColor: '#0d1117', borderWidth: 2 },
+        splitLine: { show: false },
+        yearLabel: { show: false },
+        monthLabel: { color: 'var(--text-muted)', fontSize: 11 },
+        dayLabel: {
+          firstDay: 1,
+          nameMap: ['', 'Mon', '', 'Wed', '', 'Fri', ''],
+          color: 'var(--text-muted)',
+          fontSize: 10,
+        },
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: calData,
+      }],
+    });
+    window.addEventListener('resize', () => chart.resize());
+  }
 }

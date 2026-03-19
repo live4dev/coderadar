@@ -9,6 +9,7 @@ from app.models import (
     Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
+    DeveloperDailyActivity,
     ScanScore, ScanRisk, ScanPersonalDataFinding, IdentityOverride, RepositoryGitTag,
 )
 from app.services.pii import load_pdn_config, scan_repository_for_pdn
@@ -343,6 +344,25 @@ def _persist_developers(
             first_commit_at=ds.first_commit_at,
             last_commit_at=ds.last_commit_at,
         ))
+
+        # Daily activity (upsert: take max count for re-scans)
+        from datetime import date as _date
+        existing_daily = {
+            row.commit_date: row
+            for row in db.query(DeveloperDailyActivity).filter_by(profile_id=profile.id).all()
+        }
+        for day_str, count in ds.daily_commits.items():
+            commit_date = _date.fromisoformat(day_str)
+            if commit_date in existing_daily:
+                row = existing_daily[commit_date]
+                if count > row.commit_count:
+                    row.commit_count = count
+            else:
+                db.add(DeveloperDailyActivity(
+                    profile_id=profile.id,
+                    commit_date=commit_date,
+                    commit_count=count,
+                ))
 
         # Language contributions
         total_files = sum(v[1] for v in ds.language_stats.values()) or 1

@@ -11,6 +11,7 @@ from app.models.contribution import (
     DeveloperContribution,
     DeveloperLanguageContribution,
     DeveloperModuleContribution,
+    DeveloperDailyActivity,
 )
 from app.models.scan_score import ScanScore, ScoreDomain
 from app.models.scan_risk import ScanRisk, RiskSeverity, RiskType, EntityType
@@ -39,6 +40,7 @@ __all__ = [
     "DeveloperContribution",
     "DeveloperLanguageContribution",
     "DeveloperModuleContribution",
+    "DeveloperDailyActivity",
     "ScanScore",
     "ScoreDomain",
     "ScanRisk",
