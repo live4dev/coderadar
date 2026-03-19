@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     gitlab_token: str = ""
     gitlab_base_url: str = "https://gitlab.com"
 
+    # GitHub defaults (can be overridden per-repository)
+    github_token: str = ""
+
     # PDn (personal data) types config path (relative to project root)
     pdn_types_config: str = "config/pdn_types.yaml"
 
