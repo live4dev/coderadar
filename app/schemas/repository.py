@@ -19,6 +19,11 @@ class RepositoryTagIn(BaseModel):
     description: str | None = None
 
 
+class RepositoryDailyActivityOut(BaseModel):
+    date: str   # "YYYY-MM-DD"
+    count: int
+
+
 class RepositoryTagOut(BaseModel):
     name: str
     description: str | None

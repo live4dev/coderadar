@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from app.models import (
     Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
-    DeveloperDailyActivity,
+    DeveloperDailyActivity, RepositoryDailyActivity,
     ScanScore, ScanRisk, ScanPersonalDataFinding, IdentityOverride, RepositoryGitTag,
 )
 from app.services.pii import load_pdn_config, scan_repository_for_pdn
@@ -135,6 +136,14 @@ def run_scan(scan_id: int, db: Session) -> None:
         dev_stats = aggregate_contributions(repo_path, overrides)
 
         _persist_developers(db, scan, repo.project_id, dev_stats, file_result.languages)
+
+        # Aggregate repo-level daily commits from all developers
+        repo_daily: dict[str, int] = defaultdict(int)
+        for ds in dev_stats:
+            for day_str, count in ds.daily_commits.items():
+                repo_daily[day_str] += count
+        _persist_repo_daily_activity(db, repo.id, repo_daily)
+
         db.commit()
         _check_cancelled(scan, db)
 
@@ -402,4 +411,24 @@ def _persist_developers(
                 files_changed=stats[1],
                 loc_added=stats[2],
                 percentage=round(stats[1] / total_mod_files * 100, 2),
+            ))
+
+
+def _persist_repo_daily_activity(db: Session, repo_id: int, daily_counts: dict[str, int]) -> None:
+    from datetime import date as _date
+    existing = {
+        row.commit_date: row
+        for row in db.query(RepositoryDailyActivity).filter_by(repository_id=repo_id).all()
+    }
+    for day_str, count in daily_counts.items():
+        commit_date = _date.fromisoformat(day_str)
+        if commit_date in existing:
+            row = existing[commit_date]
+            if count > row.commit_count:
+                row.commit_count = count
+        else:
+            db.add(RepositoryDailyActivity(
+                repository_id=repo_id,
+                commit_date=commit_date,
+                commit_count=count,
             ))

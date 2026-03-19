@@ -12,10 +12,11 @@ export function showRepoTab(tab) {
 }
 
 export async function renderScans() {
-  const [project, repo, scans] = await Promise.all([
+  const [project, repo, scans, activity] = await Promise.all([
     api('/projects/' + state.projectId),
     api('/repositories/' + state.repoId),
     api('/repositories/' + state.repoId + '/scans'),
+    api('/repositories/' + state.repoId + '/activity'),
   ]);
   state.projectName = project.name;
   state.repoName = repo.name;
@@ -25,12 +26,27 @@ export async function renderScans() {
     .map(t => `<div class="tab ${repoTab === t ? 'active' : ''}" onclick="showRepoTab('${t}')">${tabLabels[t]}</div>`)
     .join('');
 
+  // Build calendar data
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(today.getFullYear() - 1);
+  const calStart = yearAgo.toISOString().slice(0, 10);
+  const calEnd = today.toISOString().slice(0, 10);
+  const calData = activity.map(d => [d.date, d.count]);
+  const maxCount = calData.reduce((m, d) => Math.max(m, d[1]), 0);
+
   let content = '';
   if (repoTab === 'scans') {
+    const calendarHtml = scans.length ? `
+      <div style="margin-bottom:24px">
+        <div class="section-header"><div class="section-title">Commit activity</div></div>
+        <div id="repo-contrib-calendar" style="height:160px;width:100%"></div>
+      </div>` : '';
+
     if (!scans.length) {
       content = `<div class="empty"><div class="icon">🔍</div><p>No scans yet. Click "Run Scan" to start.</p></div>`;
     } else {
-      content = `<table>
+      let table = `<table>
         <thead><tr>
           <th>ID</th><th>Branch</th><th>Status</th>
           <th>Files</th><th>LOC</th><th>Language</th>
@@ -38,7 +54,7 @@ export async function renderScans() {
         </tr></thead><tbody>`;
       for (const s of scans) {
         const scanNav = "navigate('scan', {projectId: " + state.projectId + ", repoId: " + state.repoId + ", scanId: " + s.id + ", tab:'summary'})";
-        content += `<tr class="row-clickable" onclick="${scanNav}">
+        table += `<tr class="row-clickable" onclick="${scanNav}">
           <td><a href="#" onclick="event.stopPropagation(); ${scanNav}" class="link-style">#${s.id}</a></td>
           <td><code style="font-size:12px">${esc(s.branch)}</code></td>
           <td><span class="status ${s.status}">${esc(s.status)}</span></td>
@@ -51,7 +67,8 @@ export async function renderScans() {
           </td>
         </tr>`;
       }
-      content += '</tbody></table>';
+      table += '</tbody></table>';
+      content = calendarHtml + table;
     }
   } else if (repoTab === 'git-tags') {
     content = await buildGitTagsTab();
@@ -69,6 +86,49 @@ export async function renderScans() {
     ${content}
   `);
   updateNav();
+
+  // Render ECharts contribution calendar (only on scans tab with data)
+  const calEl = document.getElementById('repo-contrib-calendar');
+  if (calEl && window.echarts) {
+    const chart = window.echarts.init(calEl, null, { renderer: 'svg' });
+    chart.setOption({
+      tooltip: {
+        formatter: p => `${p.data[0]}<br/><b>${p.data[1]} commit${p.data[1] !== 1 ? 's' : ''}</b>`,
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: Math.max(maxCount, 1),
+        inRange: {
+          color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+        },
+      },
+      calendar: {
+        range: [calStart, calEnd],
+        cellSize: [13, 13],
+        left: 36,
+        right: 12,
+        top: 20,
+        bottom: 10,
+        itemStyle: { borderColor: '#0d1117', borderWidth: 2 },
+        splitLine: { show: false },
+        yearLabel: { show: false },
+        monthLabel: { color: 'var(--text-muted)', fontSize: 11 },
+        dayLabel: {
+          firstDay: 1,
+          nameMap: ['', 'Mon', '', 'Wed', '', 'Fri', ''],
+          color: 'var(--text-muted)',
+          fontSize: 10,
+        },
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: calData,
+      }],
+    });
+    window.addEventListener('resize', () => chart.resize());
+  }
 }
 
 export async function triggerScan() {

@@ -5,7 +5,7 @@ import { openConfirmDialog } from '../confirm.js';
 import { API } from '../state.js';
 
 export async function renderAdminDevelopers() {
-  const devs = await api('/developers');
+  const { items: devs } = await api('/developers?limit=1000');
 
   // For any expanded rows, load their override/profile data
   const expandedData = {};

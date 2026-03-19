@@ -1,7 +1,7 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, UniqueConstraint, func
+from sqlalchemy import String, Text, DateTime, Date, Integer, ForeignKey, Enum, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.db.base import Base
@@ -91,3 +91,16 @@ class Repository(Base):
     git_tags: Mapped[list[RepositoryGitTag]] = relationship(
         "RepositoryGitTag", back_populates="repository", cascade="all, delete-orphan"
     )
+
+
+class RepositoryDailyActivity(Base):
+    """Per-day commit count for a repository (aggregated across all developers)."""
+    __tablename__ = "repository_daily_activity"
+    __table_args__ = (UniqueConstraint("repository_id", "commit_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repository_id: Mapped[int] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    commit_date: Mapped[date] = mapped_column(Date, nullable=False)
+    commit_count: Mapped[int] = mapped_column(Integer, default=0)
