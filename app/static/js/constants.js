@@ -3,6 +3,6 @@ export const LANG_COLORS = [
   '#a78bfa', '#34d399', '#fb7185', '#60a5fa', '#facc15',
 ];
 
-export const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data'];
+export const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data', 'git-tags'];
 
 export const UI_BASE = '/ui';
