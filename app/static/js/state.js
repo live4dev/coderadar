@@ -34,4 +34,6 @@ export const state = {
   adminEditingProfile: null,
   adminRepoProjectFilter: null,
   adminDevExpanded: {},
+  modSortBy: 'commit_count',
+  modSortOrder: 'desc',
 };

@@ -3,7 +3,64 @@ import { api } from '../api.js';
 import { fmt, fmtDate, esc, tagsChips, setMain } from '../utils.js';
 import { LANG_COLORS } from '../constants.js';
 
+function modSortIcon(col) {
+  if (state.modSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+  return state.modSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+}
+
+function sortedModules(modules) {
+  const col = state.modSortBy;
+  const dir = state.modSortOrder === 'asc' ? 1 : -1;
+  return [...modules].sort((a, b) => {
+    const av = a[col] ?? '';
+    const bv = b[col] ?? '';
+    if (typeof av === 'number') return dir * (av - bv);
+    return dir * String(av).localeCompare(String(bv));
+  });
+}
+
+function buildModulesTable(modules) {
+  const sorted = sortedModules(modules);
+  const rows = sorted.map(m => `<tr>
+      <td>${esc(m.project_name)}</td>
+      <td>${esc(m.repository_name)}</td>
+      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
+      <td>${esc(m.module_name)}</td>
+      <td>${fmt(m.commit_count)}</td>
+      <td>${fmt(m.files_changed)}</td>
+      <td>${fmt(m.loc_added)}</td>
+      <td>${m.percentage.toFixed(1)}%</td>
+    </tr>`).join('');
+  return `
+      <div class="section-header"><div class="section-title">By module</div></div>
+      <table id="mod-table">
+        <thead><tr>
+          <th class="sortable" onclick="modSort('project_name')">Project${modSortIcon('project_name')}</th>
+          <th class="sortable" onclick="modSort('repository_name')">Repository${modSortIcon('repository_name')}</th>
+          <th>Path</th>
+          <th class="sortable" onclick="modSort('module_name')">Module${modSortIcon('module_name')}</th>
+          <th class="sortable" onclick="modSort('commit_count')">Commits${modSortIcon('commit_count')}</th>
+          <th class="sortable" onclick="modSort('files_changed')">Files${modSortIcon('files_changed')}</th>
+          <th class="sortable" onclick="modSort('loc_added')">LOC added${modSortIcon('loc_added')}</th>
+          <th class="sortable" onclick="modSort('percentage')">Share${modSortIcon('percentage')}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+}
+
+window.modSort = function(col) {
+  if (state.modSortBy === col) state.modSortOrder = state.modSortOrder === 'asc' ? 'desc' : 'asc';
+  else { state.modSortBy = col; state.modSortOrder = (col === 'project_name' || col === 'repository_name' || col === 'module_name') ? 'asc' : 'desc'; }
+  if (!state.devModules) return;
+  const container = document.getElementById('mod-table-wrap');
+  if (container) container.innerHTML = buildModulesTable(state.devModules);
+};
+
 export async function renderDeveloperProfile() {
+  state.modSortBy = 'commit_count';
+  state.modSortOrder = 'desc';
+  state.devModules = null;
+
   const [dev, contributions, languages, modules] = await Promise.all([
     api('/developers/' + state.developerId),
     api('/developers/' + state.developerId + '/contributions'),
@@ -65,22 +122,8 @@ export async function renderDeveloperProfile() {
 
   let modsHtml = '';
   if (modules.length) {
-    const rows = modules.map(m => `<tr>
-      <td>${esc(m.project_name)}</td>
-      <td>${esc(m.repository_name)}</td>
-      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
-      <td>${esc(m.module_name)}</td>
-      <td>${fmt(m.commit_count)}</td>
-      <td>${fmt(m.files_changed)}</td>
-      <td>${fmt(m.loc_added)}</td>
-      <td>${m.percentage.toFixed(1)}%</td>
-    </tr>`).join('');
-    modsHtml = `
-      <div class="section-header"><div class="section-title">By module</div></div>
-      <table>
-        <thead><tr><th>Project</th><th>Repository</th><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+    state.devModules = modules;
+    modsHtml = `<div id="mod-table-wrap">${buildModulesTable(modules)}</div>`;
   }
 
   const profiles = dev.profiles || [];
