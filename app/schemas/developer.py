@@ -89,6 +89,8 @@ class DeveloperLanguageOut(BaseModel):
 
 
 class DeveloperModuleOut(BaseModel):
+    project_name: str
+    repository_name: str
     module_path: str
     module_name: str
     commit_count: int

@@ -66,6 +66,8 @@ export async function renderDeveloperProfile() {
   let modsHtml = '';
   if (modules.length) {
     const rows = modules.map(m => `<tr>
+      <td>${esc(m.project_name)}</td>
+      <td>${esc(m.repository_name)}</td>
       <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
       <td>${esc(m.module_name)}</td>
       <td>${fmt(m.commit_count)}</td>
@@ -76,7 +78,7 @@ export async function renderDeveloperProfile() {
     modsHtml = `
       <div class="section-header"><div class="section-title">By module</div></div>
       <table>
-        <thead><tr><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
+        <thead><tr><th>Project</th><th>Repository</th><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }

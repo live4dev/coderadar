@@ -397,7 +397,11 @@ def get_developer_modules(
     if scan_id is not None:
         q = (
             db.query(DeveloperModuleContribution)
-            .options(joinedload(DeveloperModuleContribution.module))
+            .options(
+                joinedload(DeveloperModuleContribution.module)
+                .joinedload(Module.repository)
+                .joinedload(Repository.project)
+            )
             .filter(
                 DeveloperModuleContribution.profile_id.in_(profile_ids),
                 DeveloperModuleContribution.scan_id == scan_id,
@@ -406,6 +410,8 @@ def get_developer_modules(
         rows = q.order_by(DeveloperModuleContribution.percentage.desc()).all()
         return [
             DeveloperModuleOut(
+                project_name=r.module.repository.project.name,
+                repository_name=r.module.repository.name,
                 module_path=r.module.path,
                 module_name=r.module.name,
                 commit_count=r.commit_count,
@@ -418,6 +424,8 @@ def get_developer_modules(
 
     agg = (
         db.query(
+            Project.name.label("project_name"),
+            Repository.name.label("repository_name"),
             Module.path,
             Module.name,
             func.sum(DeveloperModuleContribution.commit_count).label("commit_count"),
@@ -425,13 +433,17 @@ def get_developer_modules(
             func.sum(DeveloperModuleContribution.loc_added).label("loc_added"),
         )
         .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
+        .join(Repository, Repository.id == Module.repository_id)
+        .join(Project, Project.id == Repository.project_id)
         .filter(DeveloperModuleContribution.profile_id.in_(profile_ids))
-        .group_by(Module.id, Module.path, Module.name)
+        .group_by(Project.id, Project.name, Repository.id, Repository.name, Module.id, Module.path, Module.name)
     )
     rows = agg.order_by(func.sum(DeveloperModuleContribution.loc_added).desc()).all()
     total_loc = sum(r.loc_added or 0 for r in rows)
     return [
         DeveloperModuleOut(
+            project_name=r.project_name,
+            repository_name=r.repository_name,
             module_path=r.path,
             module_name=r.name,
             commit_count=int(r.commit_count or 0),
