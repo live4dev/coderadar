@@ -110,7 +110,7 @@ export async function renderScans() {
         right: 12,
         top: 20,
         bottom: 10,
-        itemStyle: { borderColor: '#0d1117', borderWidth: 2 },
+       itemStyle: { color: '#191C26', borderColor: '#0d1117', borderWidth: 2 },
         splitLine: { show: false },
         yearLabel: { show: false },
         monthLabel: { color: 'var(--text-muted)', fontSize: 11 },
