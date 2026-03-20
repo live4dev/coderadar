@@ -3,12 +3,70 @@ import { api } from '../api.js';
 import { fmt, fmtDate, esc, tagsChips, setMain } from '../utils.js';
 import { LANG_COLORS } from '../constants.js';
 
+function modSortIcon(col) {
+  if (state.modSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+  return state.modSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+}
+
+function sortedModules(modules) {
+  const col = state.modSortBy;
+  const dir = state.modSortOrder === 'asc' ? 1 : -1;
+  return [...modules].sort((a, b) => {
+    const av = a[col] ?? '';
+    const bv = b[col] ?? '';
+    if (typeof av === 'number') return dir * (av - bv);
+    return dir * String(av).localeCompare(String(bv));
+  });
+}
+
+function buildModulesTable(modules) {
+  const sorted = sortedModules(modules);
+  const rows = sorted.map(m => `<tr>
+      <td>${esc(m.project_name)}</td>
+      <td>${esc(m.repository_name)}</td>
+      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
+      <td>${esc(m.module_name)}</td>
+      <td>${fmt(m.commit_count)}</td>
+      <td>${fmt(m.files_changed)}</td>
+      <td>${fmt(m.loc_added)}</td>
+      <td>${m.percentage.toFixed(1)}%</td>
+    </tr>`).join('');
+  return `
+      <div class="section-header"><div class="section-title">By module</div></div>
+      <table id="mod-table">
+        <thead><tr>
+          <th class="sortable" onclick="modSort('project_name')">Project${modSortIcon('project_name')}</th>
+          <th class="sortable" onclick="modSort('repository_name')">Repository${modSortIcon('repository_name')}</th>
+          <th>Path</th>
+          <th class="sortable" onclick="modSort('module_name')">Module${modSortIcon('module_name')}</th>
+          <th class="sortable" onclick="modSort('commit_count')">Commits${modSortIcon('commit_count')}</th>
+          <th class="sortable" onclick="modSort('files_changed')">Files${modSortIcon('files_changed')}</th>
+          <th class="sortable" onclick="modSort('loc_added')">LOC added${modSortIcon('loc_added')}</th>
+          <th class="sortable" onclick="modSort('percentage')">Share${modSortIcon('percentage')}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+}
+
+window.modSort = function(col) {
+  if (state.modSortBy === col) state.modSortOrder = state.modSortOrder === 'asc' ? 'desc' : 'asc';
+  else { state.modSortBy = col; state.modSortOrder = (col === 'project_name' || col === 'repository_name' || col === 'module_name') ? 'asc' : 'desc'; }
+  if (!state.devModules) return;
+  const container = document.getElementById('mod-table-wrap');
+  if (container) container.innerHTML = buildModulesTable(state.devModules);
+};
+
 export async function renderDeveloperProfile() {
-  const [dev, contributions, languages, modules] = await Promise.all([
+  state.modSortBy = 'commit_count';
+  state.modSortOrder = 'desc';
+  state.devModules = null;
+
+  const [dev, contributions, languages, modules, activity] = await Promise.all([
     api('/developers/' + state.developerId),
     api('/developers/' + state.developerId + '/contributions'),
     api('/developers/' + state.developerId + '/languages'),
     api('/developers/' + state.developerId + '/modules'),
+    api('/developers/' + state.developerId + '/activity'),
   ]);
 
   const statsRow = `
@@ -65,20 +123,8 @@ export async function renderDeveloperProfile() {
 
   let modsHtml = '';
   if (modules.length) {
-    const rows = modules.map(m => `<tr>
-      <td><code style="font-size:11px">${esc(m.module_path)}</code></td>
-      <td>${esc(m.module_name)}</td>
-      <td>${fmt(m.commit_count)}</td>
-      <td>${fmt(m.files_changed)}</td>
-      <td>${fmt(m.loc_added)}</td>
-      <td>${m.percentage.toFixed(1)}%</td>
-    </tr>`).join('');
-    modsHtml = `
-      <div class="section-header"><div class="section-title">By module</div></div>
-      <table>
-        <thead><tr><th>Path</th><th>Module</th><th>Commits</th><th>Files</th><th>LOC added</th><th>Share</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+    state.devModules = modules;
+    modsHtml = `<div id="mod-table-wrap">${buildModulesTable(modules)}</div>`;
   }
 
   const profiles = dev.profiles || [];
@@ -88,7 +134,6 @@ export async function renderDeveloperProfile() {
     <div class="section-header" style="margin-top:20px"><div class="section-title">Tags</div></div>
     <div style="margin-bottom:20px">
       ${tagsChips(devTags)}
-      <button class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:12px" onclick="openEditTagsModal('developer', ${dev.id}, ${JSON.stringify(devTags)}, ${JSON.stringify(primaryName)})">Edit tags</button>
     </div>`;
   const profilesBlock = profiles.length ? `
     <div class="section-header" style="margin-top:20px"><div class="section-title">Profiles (${profiles.length})</div></div>
@@ -101,6 +146,15 @@ export async function renderDeveloperProfile() {
         </div>
       `).join('')}
     </div>` : '';
+
+  // Build calendar data for ECharts (last 365 days)
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(today.getFullYear() - 1);
+  const calStart = yearAgo.toISOString().slice(0, 10);
+  const calEnd = today.toISOString().slice(0, 10);
+  const calData = activity.map(d => [d.date, d.count]);
+  const maxCount = calData.reduce((m, d) => Math.max(m, d[1]), 0);
 
   setMain(`
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -116,7 +170,54 @@ export async function renderDeveloperProfile() {
       First commit: ${fmtDate(contributions.first_commit_at)} · Last commit: ${fmtDate(contributions.last_commit_at)}
     </div>
     ${statsRow}
+    <div style="margin-top:24px;margin-bottom:8px">
+      <div class="section-header"><div class="section-title">Contribution activity</div></div>
+      <div id="contrib-calendar" style="height:160px;width:100%"></div>
+    </div>
     ${langsHtml}
     ${modsHtml ? '<div style="margin-top:28px">' + modsHtml + '</div>' : ''}
   `);
+
+  // Render ECharts contribution calendar
+  const calEl = document.getElementById('contrib-calendar');
+  if (calEl && window.echarts) {
+    const chart = window.echarts.init(calEl, null, { renderer: 'svg' });
+    chart.setOption({
+      tooltip: {
+        formatter: p => `${p.data[0]}<br/><b>${p.data[1]} commit${p.data[1] !== 1 ? 's' : ''}</b>`,
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: Math.max(maxCount, 1),
+        inRange: {
+          color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+        },
+      },
+      calendar: {
+        range: [calStart, calEnd],
+        cellSize: [13, 13],
+        left: 36,
+        right: 12,
+        top: 20,
+        bottom: 10,
+        itemStyle: { color: '#191C26', borderColor: '#0d1117', borderWidth: 2 },
+        splitLine: { show: false },
+        yearLabel: { show: false },
+        monthLabel: { color: 'var(--text-muted)', fontSize: 11 },
+        dayLabel: {
+          firstDay: 1,
+          nameMap: ['', 'Mon', '', 'Wed', '', 'Fri', ''],
+          color: 'var(--text-muted)',
+          fontSize: 10,
+        },
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: calData,
+      }],
+    });
+    window.addEventListener('resize', () => chart.resize());
+  }
 }

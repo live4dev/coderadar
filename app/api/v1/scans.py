@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -7,6 +9,7 @@ from app.models import (
     Repository, Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding,
     DeveloperContribution, DeveloperProfile,
 )
+from app.models.scan import ScanStatus
 from app.services.source_links import build_source_url
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
@@ -14,6 +17,7 @@ from app.schemas.scan import (
     PersonalDataOut, PersonalDataCountOut, PersonalDataFindingOut,
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
+    ScanQueueItemOut,
 )
 
 router = APIRouter(prefix="/scans", tags=["scans"])
@@ -23,6 +27,47 @@ def _get_scan_or_404(scan_id: int, db: Session) -> Scan:
     scan = db.get(Scan, scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
+    return scan
+
+
+@router.get("/queue", response_model=list[ScanQueueItemOut])
+def get_scan_queue(db: Session = Depends(get_db)):
+    """Return all pending and running scans across all repositories."""
+    rows = (
+        db.query(Scan, Repository.name.label("repository_name"))
+        .join(Repository, Scan.repository_id == Repository.id)
+        .filter(Scan.status.in_([ScanStatus.pending, ScanStatus.running]))
+        .order_by(Scan.created_at.asc())
+        .all()
+    )
+    return [
+        ScanQueueItemOut(
+            id=scan.id,
+            repository_id=scan.repository_id,
+            repository_name=repo_name,
+            status=scan.status,
+            branch=scan.branch,
+            created_at=scan.created_at,
+            started_at=scan.started_at,
+            cancel_requested=scan.cancel_requested,
+        )
+        for scan, repo_name in rows
+    ]
+
+
+@router.post("/{scan_id}/cancel", response_model=ScanOut)
+def cancel_scan(scan_id: int, db: Session = Depends(get_db)):
+    """Cancel a pending or running scan."""
+    scan = _get_scan_or_404(scan_id, db)
+    if scan.status == ScanStatus.pending:
+        scan.status = ScanStatus.cancelled
+        scan.completed_at = datetime.now(timezone.utc)
+    elif scan.status == ScanStatus.running:
+        scan.cancel_requested = True
+    else:
+        raise HTTPException(400, f"Cannot cancel scan with status '{scan.status}'")
+    db.commit()
+    db.refresh(scan)
     return scan
 
 

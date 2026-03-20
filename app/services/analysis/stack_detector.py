@@ -15,6 +15,7 @@ class StackInfo:
     has_kubernetes: bool = False
     has_terraform: bool = False
     has_helm: bool = False
+    has_fabric: bool = False
     infra_tools: list[str] = field(default_factory=list)
     linters: list[str] = field(default_factory=list)
     formatters: list[str] = field(default_factory=list)
@@ -284,3 +285,6 @@ def _detect_infra(root: Path, info: StackInfo) -> None:
     if _file_exists(root, "helm", "charts") or list(root.rglob("Chart.yaml")):
         info.has_helm = True
         info.infra_tools.append("helm")
+    if _file_exists(root, "fabfile.py", "fabfile", "minifab"):
+        info.has_fabric = True
+        info.infra_tools.append("fabric")

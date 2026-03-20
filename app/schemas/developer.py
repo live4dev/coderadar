@@ -27,7 +27,7 @@ class DeveloperOut(BaseModel):
     @classmethod
     def _tags_from_orm(cls, data, handler):
         if not isinstance(data, dict) and hasattr(data, "tags") and data.tags is not None:
-            d = {"id": data.id, "profiles": data.profiles, "created_at": data.created_at, "tags": [t.tag for t in data.tags]}
+            d = {"id": data.id, "profiles": data.profiles, "created_at": data.created_at, "tags": [t.tag if hasattr(t, "tag") else t for t in data.tags]}
             return handler(d)
         return handler(data)
 
@@ -89,6 +89,8 @@ class DeveloperLanguageOut(BaseModel):
 
 
 class DeveloperModuleOut(BaseModel):
+    project_name: str
+    repository_name: str
     module_path: str
     module_name: str
     commit_count: int
@@ -119,6 +121,13 @@ class DeveloperProfileUpdate(BaseModel):
     primary_email: str | None = None
 
 
+class DeveloperListPage(BaseModel):
+    items: list[DeveloperListOut]
+    total: int
+    has_more: bool
+    total_commits_all: int
+
+
 class IdentityOverrideOut(BaseModel):
     id: int
     project_id: int | None
@@ -129,3 +138,8 @@ class IdentityOverrideOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeveloperDailyActivityOut(BaseModel):
+    date: str   # "YYYY-MM-DD"
+    count: int

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
+from typing import Dict
 
 from app.services.git_analytics.git_parser import CommitRecord, parse_git_log_v2
 from app.services.identity.normalizer import normalize_identity, NormalizedIdentity
@@ -36,6 +37,9 @@ class DeveloperStats:
     # module path → (commits, files, loc_added)
     module_stats: dict[str, list[int]] = field(default_factory=lambda: defaultdict(lambda: [0, 0, 0]))
 
+    # date string YYYY-MM-DD → commit count
+    daily_commits: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+
 
 def _get_module(filepath: str) -> str:
     """Return top-level directory as module name."""
@@ -56,8 +60,6 @@ def aggregate_contributions(
     developer_map: dict[str, DeveloperStats] = {}
     # raw_key → canonical_username for deduplication
     identity_cache: dict[tuple[str, str], str] = {}
-    # days per developer
-    active_days_sets: dict[str, set[str]] = defaultdict(set)
 
     for commit in commits:
         raw_key = (commit.author_name, commit.author_email)
@@ -82,7 +84,7 @@ def aggregate_contributions(
         dev.commit_count += 1
 
         day_str = commit.timestamp.strftime("%Y-%m-%d")
-        active_days_sets[username].add(day_str)
+        dev.daily_commits[day_str] += 1
 
         if dev.first_commit_at is None or commit.timestamp < dev.first_commit_at:
             dev.first_commit_at = commit.timestamp
@@ -110,7 +112,7 @@ def aggregate_contributions(
 
         dev.files_changed += len(files_in_commit)
 
-    for username, dev in developer_map.items():
-        dev.active_days = len(active_days_sets[username])
+    for dev in developer_map.values():
+        dev.active_days = len(dev.daily_commits)
 
     return list(developer_map.values())

@@ -1,20 +1,27 @@
 """Analytics API: treemap tree and similar."""
+import json
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus
-from app.schemas.analytics import TreemapNode
+from app.models.scan_language import ScanLanguage
+from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 def _latest_scan_per_repo(db: Session, repo_ids: list[int]) -> dict[int, Scan]:
-    """Return repo_id -> latest completed scan."""
+    """Return repo_id -> latest completed scan (with languages eager-loaded)."""
     if not repo_ids:
         return {}
     latest = (
         db.query(Scan)
+        .options(
+            joinedload(Scan.languages).joinedload(ScanLanguage.language)
+        )
         .filter(
             Scan.repository_id.in_(repo_ids),
             Scan.status == ScanStatus.completed,
@@ -112,4 +119,115 @@ def get_treemap(
         value=root_value,
         type="root",
         children=project_nodes,
+    )
+
+
+@router.get("/tech-map", response_model=TechMapResponse)
+def get_tech_map(
+    project_id: int | None = Query(None, description="Optional: limit to one project"),
+    db: Session = Depends(get_db),
+):
+    """Return technology stack summary for all repositories (latest completed scan per repo)."""
+    projects = (
+        db.query(Project)
+        .order_by(Project.id)
+        .all()
+    )
+    if project_id is not None:
+        projects = [p for p in projects if p.id == project_id]
+        if not projects:
+            raise HTTPException(404, "Project not found")
+
+    project_map = {p.id: p.name for p in projects}
+    repo_ids = []
+    repos_by_id: dict[int, Repository] = {}
+
+    for p in projects:
+        repos = db.query(Repository).filter_by(project_id=p.id).all()
+        for r in repos:
+            repo_ids.append(r.id)
+            repos_by_id[r.id] = r
+
+    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+
+    def _load(col: str | None) -> list[str]:
+        if not col:
+            return []
+        try:
+            return json.loads(col)
+        except Exception:
+            return []
+
+    repo_entries: list[TechMapRepo] = []
+    # language name -> accumulated stats across all repos
+    lang_stats: dict[str, dict] = defaultdict(lambda: {"total_loc": 0, "total_files": 0, "repo_count": 0})
+    fw_counts: dict[str, int] = defaultdict(int)
+    ci_counts: dict[str, int] = defaultdict(int)
+    pm_counts: dict[str, int] = defaultdict(int)
+    infra_counts: dict[str, int] = defaultdict(int)
+
+    for rid, repo in repos_by_id.items():
+        scan = scan_by_repo.get(rid)
+        if scan is None:
+            continue
+
+        frameworks = _load(scan.frameworks_json)
+        package_managers = _load(scan.package_managers_json)
+        infra_tools = _load(scan.infra_tools_json)
+        linters = _load(scan.linters_json)
+
+        # Accumulate per-language LOC and files from ScanLanguage records
+        repo_languages: list[RepoLanguage] = []
+        for sl in sorted(scan.languages, key=lambda s: -(s.loc or 0)):
+            lang_name = sl.language.name
+            repo_languages.append(RepoLanguage(
+                name=lang_name,
+                loc=sl.loc or 0,
+                file_count=sl.file_count or 0,
+                percentage=sl.percentage or 0.0,
+            ))
+            lang_stats[lang_name]["total_loc"] += sl.loc or 0
+            lang_stats[lang_name]["total_files"] += sl.file_count or 0
+            lang_stats[lang_name]["repo_count"] += 1
+
+        for f in frameworks:
+            fw_counts[f] += 1
+        if scan.ci_provider:
+            ci_counts[scan.ci_provider] += 1
+        for pm in package_managers:
+            pm_counts[pm] += 1
+        for it in infra_tools:
+            infra_counts[it] += 1
+
+        repo_entries.append(TechMapRepo(
+            repo_id=rid,
+            repo_name=repo.name,
+            project_id=repo.project_id,
+            project_name=project_map.get(repo.project_id, ""),
+            primary_language=scan.primary_language,
+            project_type=scan.project_type.value if scan.project_type else None,
+            languages=repo_languages,
+            frameworks=frameworks,
+            package_managers=package_managers,
+            ci_provider=scan.ci_provider,
+            infra_tools=infra_tools,
+            linters=linters,
+            has_docker=bool(scan.has_docker),
+            has_kubernetes=bool(scan.has_kubernetes),
+            has_terraform=bool(scan.has_terraform),
+        ))
+
+    sorted_langs = dict(
+        sorted(lang_stats.items(), key=lambda x: -x[1]["total_loc"])
+    )
+
+    return TechMapResponse(
+        repos=repo_entries,
+        tech_counts=TechCounts(
+            languages={k: LanguageStat(**v) for k, v in sorted_langs.items()},
+            frameworks=dict(sorted(fw_counts.items(), key=lambda x: -x[1])),
+            ci_providers=dict(sorted(ci_counts.items(), key=lambda x: -x[1])),
+            package_managers=dict(sorted(pm_counts.items(), key=lambda x: -x[1])),
+            infra_tools=dict(sorted(infra_counts.items(), key=lambda x: -x[1])),
+        ),
     )

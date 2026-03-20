@@ -62,7 +62,7 @@ export async function renderProjects() {
         <td>${hasScans && p.total_files != null ? fmt(p.total_files) : '—'}</td>
         <td>${p.avg_score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${p.avg_score}%"></div></div><span class="score-num">${p.avg_score.toFixed(0)}</span></div>` : '—'}</td>
         <td style="font-size:11px;color:var(--text-muted)">${p.last_scan_at ? fmtDate(p.last_scan_at) : '—'}</td>
-        <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('project', ${p.id}, ${JSON.stringify(tags)}, ${JSON.stringify(p.name)})">Edit tags</button></td>
+        <td onclick="event.stopPropagation()">${tagsChips(tags)}</td>
         <td><span class="tag accent">View repos →</span></td>
       </tr>`;
     }).join('');

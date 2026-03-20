@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Repository, RepositoryTag, Scan, ScanStatus, Project, ProviderType
-from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, RepositoryTagsUpdate, RepositoryTagIn, ScanTrigger
+from app.models import Repository, RepositoryTag, RepositoryDailyActivity, Scan, ScanStatus, Project, ProviderType, RepositoryGitTag
+from app.schemas.repository import RepositoryCreate, RepositoryOut, RepositoryUpdate, RepositoryTagsUpdate, RepositoryTagIn, ScanTrigger, RepositoryGitTagOut, RepositoryDailyActivityOut
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
 
@@ -167,6 +167,19 @@ def list_scans(repo_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{repo_id}/git-tags", response_model=list[RepositoryGitTagOut])
+def list_git_tags(repo_id: int, db: Session = Depends(get_db)):
+    repo = db.get(Repository, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    return (
+        db.query(RepositoryGitTag)
+        .filter_by(repository_id=repo_id)
+        .order_by(RepositoryGitTag.tagged_at.desc().nullslast())
+        .all()
+    )
+
+
 @router.get("/{repo_id}/modules")
 def list_modules(repo_id: int, db: Session = Depends(get_db)):
     from app.models import Module
@@ -175,3 +188,18 @@ def list_modules(repo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Repository not found")
     modules = db.query(Module).filter_by(repository_id=repo_id).all()
     return [{"id": m.id, "path": m.path, "name": m.name} for m in modules]
+
+
+@router.get("/{repo_id}/activity", response_model=list[RepositoryDailyActivityOut])
+def get_repository_activity(repo_id: int, db: Session = Depends(get_db)):
+    """Daily commit activity for a repository across all time."""
+    repo = db.get(Repository, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    rows = (
+        db.query(RepositoryDailyActivity)
+        .filter_by(repository_id=repo_id)
+        .order_by(RepositoryDailyActivity.commit_date)
+        .all()
+    )
+    return [RepositoryDailyActivityOut(date=str(r.commit_date), count=r.commit_count) for r in rows]

@@ -1,13 +1,13 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import (
     Project, ProjectTag, Developer, DeveloperProfile, DeveloperContribution,
-    Repository, Scan, ScanScore, ScanStatus,
+    Repository, RepositoryDailyActivity, Scan, ScanScore, ScanStatus,
 )
 from app.models.scan_score import ScoreDomain
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectSummaryOut, ProjectUpdate, TagsUpdate
@@ -17,6 +17,7 @@ from app.schemas.repository import (
     RepositoryWithLatestScanOut,
     RepositoryTagOut,
     LatestScanOut,
+    RepositoryDailyActivityOut,
 )
 from app.schemas.scan import ScanOut
 from app.services.scanning.queue import enqueue
@@ -495,3 +496,23 @@ def list_project_developers(project_id: int, db: Session = Depends(get_db)):
         )
         for d in developers
     ]
+
+
+@router.get("/{project_id}/activity", response_model=list[RepositoryDailyActivityOut])
+def get_project_activity(project_id: int, db: Session = Depends(get_db)):
+    """Daily commit activity for a project, aggregated across all its repositories."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    rows = (
+        db.query(
+            RepositoryDailyActivity.commit_date,
+            func.sum(RepositoryDailyActivity.commit_count).label("count"),
+        )
+        .join(Repository, RepositoryDailyActivity.repository_id == Repository.id)
+        .filter(Repository.project_id == project_id)
+        .group_by(RepositoryDailyActivity.commit_date)
+        .order_by(RepositoryDailyActivity.commit_date)
+        .all()
+    )
+    return [RepositoryDailyActivityOut(date=str(r.commit_date), count=int(r.count)) for r in rows]

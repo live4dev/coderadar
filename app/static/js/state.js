@@ -13,6 +13,11 @@ export const state = {
   devSortBy: 'commits',
   devSortOrder: 'desc',
   devSearch: '',
+  devOffset: 0,
+  devItems: [],
+  devHasMore: false,
+  devTotalCount: 0,
+  devTotalCommitsAll: 0,
   projSortBy: 'name',
   projSortOrder: 'asc',
   projSearch: '',
@@ -29,4 +34,6 @@ export const state = {
   adminEditingProfile: null,
   adminRepoProjectFilter: null,
   adminDevExpanded: {},
+  modSortBy: 'commit_count',
+  modSortOrder: 'desc',
 };

@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models import (
     Developer, DeveloperTag, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
-    DeveloperModuleContribution, IdentityOverride, Language, Module, Project,
+    DeveloperModuleContribution, DeveloperDailyActivity, IdentityOverride, Language, Module, Project,
     Repository, Scan,
 )
 from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
-    DeveloperOut, DeveloperListOut, DeveloperProfileOut, DeveloperLanguageOut,
+    DeveloperOut, DeveloperListOut, DeveloperListPage, DeveloperProfileOut, DeveloperLanguageOut,
     DeveloperModuleOut, DeveloperContributionsSummaryOut, IdentityOverrideCreate,
-    DeveloperProfileUpdate, IdentityOverrideOut,
+    DeveloperProfileUpdate, IdentityOverrideOut, DeveloperDailyActivityOut,
 )
 
 router = APIRouter(prefix="/developers", tags=["developers"])
@@ -31,12 +31,14 @@ def _profile_to_out(p: DeveloperProfile) -> DeveloperProfileOut:
 SORT_FIELDS = {"commits", "insertions", "deletions", "files_changed", "active_days", "last_commit_at", "name"}
 
 
-@router.get("", response_model=list[DeveloperListOut])
+@router.get("", response_model=DeveloperListPage)
 def list_developers(
     project_id: int | None = None,
     sort_by: str = Query("commits", description="Sort by: commits, insertions, deletions, files_changed, active_days, last_commit_at, name"),
     order: str = Query("desc", description="Sort order: asc or desc"),
     q: str | None = Query(None, description="Search by display name, username or email"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
     """List all developers with aggregated stats (across all their profiles). Optional project_id, sort, search."""
@@ -97,28 +99,37 @@ def list_developers(
         )
         q_base = q_base.filter(Developer.id.in_(db.query(dev_ids_with_search.c.id)))
 
+    sq = q_base.subquery()
+    total, total_commits_all = db.query(
+        func.count(sq.c.id),
+        func.coalesce(func.sum(sq.c.total_commits), 0),
+    ).first()
+    total = int(total)
+    total_commits_all = int(total_commits_all)
+
     if sort_by == "name":
-        rows = q_base.all()
-        dev_ids = [r.id for r in rows]
-        if not dev_ids:
-            return []
-        developers_with_profiles = (
+        all_rows = q_base.all()
+        if not all_rows:
+            return DeveloperListPage(items=[], total=0, has_more=False, total_commits_all=0)
+        all_dev_ids = [r.id for r in all_rows]
+        developers_for_sort = (
             db.query(Developer)
             .options(joinedload(Developer.profiles), joinedload(Developer.tags))
-            .filter(Developer.id.in_(dev_ids))
+            .filter(Developer.id.in_(all_dev_ids))
             .all()
         )
-        dev_map = {d.id: d for d in developers_with_profiles}
+        dev_map_sort = {d.id: d for d in developers_for_sort}
 
         def name_key(rid):
-            dev = dev_map.get(rid, Developer())
+            dev = dev_map_sort.get(rid, Developer())
             profs = dev.profiles or []
             first = profs[0] if profs else None
             if first:
                 return (first.display_name or first.canonical_username or "").lower()
             return ""
 
-        rows = sorted(rows, key=lambda r: name_key(r.id), reverse=not order_asc)
+        all_rows = sorted(all_rows, key=lambda r: name_key(r.id), reverse=not order_asc)
+        rows = all_rows[offset:offset + limit]
     else:
         if sort_by == "commits":
             order_expr = func.coalesce(func.sum(DeveloperContribution.commit_count), 0)
@@ -138,10 +149,10 @@ def list_developers(
             order_expr = order_expr.asc()
         else:
             order_expr = order_expr.desc()
-        rows = q_base.order_by(order_expr).all()
+        rows = q_base.order_by(order_expr).offset(offset).limit(limit).all()
 
     if not rows:
-        return []
+        return DeveloperListPage(items=[], total=total, has_more=False, total_commits_all=total_commits_all)
 
     dev_ids = [r.id for r in rows]
     developers_with_profiles = (
@@ -156,7 +167,7 @@ def list_developers(
         proj = db.get(Project, project_id)
         project_name = proj.name if proj else None
 
-    return [
+    items = [
         DeveloperListOut(
             id=r.id,
             total_commits=int(r.total_commits),
@@ -173,6 +184,12 @@ def list_developers(
         )
         for r in rows
     ]
+    return DeveloperListPage(
+        items=items,
+        total=total,
+        has_more=(offset + limit < total),
+        total_commits_all=total_commits_all,
+    )
 
 
 def _normalize_tags(tags: list[str]) -> list[str]:
@@ -397,7 +414,11 @@ def get_developer_modules(
     if scan_id is not None:
         q = (
             db.query(DeveloperModuleContribution)
-            .options(joinedload(DeveloperModuleContribution.module))
+            .options(
+                joinedload(DeveloperModuleContribution.module)
+                .joinedload(Module.repository)
+                .joinedload(Repository.project)
+            )
             .filter(
                 DeveloperModuleContribution.profile_id.in_(profile_ids),
                 DeveloperModuleContribution.scan_id == scan_id,
@@ -406,6 +427,8 @@ def get_developer_modules(
         rows = q.order_by(DeveloperModuleContribution.percentage.desc()).all()
         return [
             DeveloperModuleOut(
+                project_name=r.module.repository.project.name,
+                repository_name=r.module.repository.name,
                 module_path=r.module.path,
                 module_name=r.module.name,
                 commit_count=r.commit_count,
@@ -418,6 +441,8 @@ def get_developer_modules(
 
     agg = (
         db.query(
+            Project.name.label("project_name"),
+            Repository.name.label("repository_name"),
             Module.path,
             Module.name,
             func.sum(DeveloperModuleContribution.commit_count).label("commit_count"),
@@ -425,13 +450,17 @@ def get_developer_modules(
             func.sum(DeveloperModuleContribution.loc_added).label("loc_added"),
         )
         .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
+        .join(Repository, Repository.id == Module.repository_id)
+        .join(Project, Project.id == Repository.project_id)
         .filter(DeveloperModuleContribution.profile_id.in_(profile_ids))
-        .group_by(Module.id, Module.path, Module.name)
+        .group_by(Project.id, Project.name, Repository.id, Repository.name, Module.id, Module.path, Module.name)
     )
     rows = agg.order_by(func.sum(DeveloperModuleContribution.loc_added).desc()).all()
     total_loc = sum(r.loc_added or 0 for r in rows)
     return [
         DeveloperModuleOut(
+            project_name=r.project_name,
+            repository_name=r.repository_name,
             module_path=r.path,
             module_name=r.name,
             commit_count=int(r.commit_count or 0),
@@ -441,6 +470,28 @@ def get_developer_modules(
         )
         for r in rows
     ]
+
+
+@router.get("/{developer_id}/activity", response_model=list[DeveloperDailyActivityOut])
+def get_developer_activity(developer_id: int, db: Session = Depends(get_db)):
+    """Daily commit activity for a developer (aggregated across all their profiles)."""
+    dev = db.get(Developer, developer_id)
+    if not dev:
+        raise HTTPException(404, "Developer not found")
+    profile_ids = [r[0] for r in db.query(DeveloperProfile.id).filter(DeveloperProfile.developer_id == developer_id).all()]
+    if not profile_ids:
+        return []
+    rows = (
+        db.query(
+            DeveloperDailyActivity.commit_date,
+            func.sum(DeveloperDailyActivity.commit_count).label("count"),
+        )
+        .filter(DeveloperDailyActivity.profile_id.in_(profile_ids))
+        .group_by(DeveloperDailyActivity.commit_date)
+        .order_by(DeveloperDailyActivity.commit_date)
+        .all()
+    )
+    return [DeveloperDailyActivityOut(date=str(r.commit_date), count=int(r.count)) for r in rows]
 
 
 @router.put("/profiles/{profile_id}", response_model=DeveloperProfileOut)

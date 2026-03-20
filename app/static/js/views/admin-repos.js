@@ -97,6 +97,7 @@ export async function renderAdminRepos() {
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
           <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminRepoScan(${r.id})">Rescan</button>
           <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminRepoEdit(${r.id})">Edit</button>
+          <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="openEditTagsModal('repository', ${r.id}, ${esc(JSON.stringify(r.tags || []))}, ${esc(JSON.stringify(r.name))})">Edit tags</button>
           <button class="btn btn-danger" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminRepoDelete(${r.id}, ${JSON.stringify(esc(r.name))})">Delete</button>
         </td>
       </tr>`).join('');

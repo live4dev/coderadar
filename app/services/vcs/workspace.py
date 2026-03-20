@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.services.vcs.base import BaseVCSProvider, CloneResult
 from app.services.vcs.bitbucket import BitbucketProvider
+from app.services.vcs.github import GitHubProvider
 from app.services.vcs.gitlab import GitLabProvider
 
 logger = get_logger(__name__)
@@ -33,6 +34,11 @@ def get_provider(
         return GitLabProvider(
             username=username or "oauth2",
             token=token or settings.gitlab_token,
+        )
+    if provider_type == "github":
+        return GitHubProvider(
+            username=username or "x-token-auth",
+            token=token or settings.github_token,
         )
     raise ValueError(f"Unknown provider_type: {provider_type!r}")
 

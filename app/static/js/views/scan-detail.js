@@ -8,6 +8,7 @@ import { buildScoresTab } from '../tabs/scores.js';
 import { buildRisksTab } from '../tabs/risks.js';
 import { buildDevelopersTab } from '../tabs/developers-tab.js';
 import { buildPersonalDataTab } from '../tabs/personal-data-tab.js';
+import { buildGitTagsTab } from '../tabs/git-tags.js';
 
 export async function renderScanDetail() {
   updateNav();
@@ -29,9 +30,10 @@ export async function renderScanDetail() {
     if (state.tab === 'risks')          content = await buildRisksTab();
     if (state.tab === 'developers')     content = await buildDevelopersTab();
     if (state.tab === 'personal-data')  content = await buildPersonalDataTab(scan);
+    if (state.tab === 'git-tags')       content = await buildGitTagsTab();
 
-    const tabLabels = { summary: 'Summary', languages: 'Languages', scores: 'Scores', risks: 'Risks', developers: 'Developers', 'personal-data': 'Personal Data' };
-    const tabs = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data']
+    const tabLabels = { summary: 'Summary', languages: 'Languages', scores: 'Scores', risks: 'Risks', developers: 'Developers', 'personal-data': 'Personal Data', 'git-tags': 'Git Tags' };
+    const tabs = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data', 'git-tags']
       .map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="showTab('${t}')">${tabLabels[t]}</div>`).join('');
 
     const failedBlock = scan.status === 'failed' ? `

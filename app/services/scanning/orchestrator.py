@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,7 +10,8 @@ from app.models import (
     Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
-    ScanScore, ScanRisk, ScanPersonalDataFinding, IdentityOverride,
+    DeveloperDailyActivity, RepositoryDailyActivity,
+    ScanScore, ScanRisk, ScanPersonalDataFinding, IdentityOverride, RepositoryGitTag,
 )
 from app.services.pii import load_pdn_config, scan_repository_for_pdn
 from app.services.vcs.workspace import RepoWorkspaceManager
@@ -18,11 +20,23 @@ from app.services.analysis.stack_detector import detect_stack
 from app.services.analysis.dependency_parser import parse_all as parse_deps
 from app.services.analysis.complexity import analyze_complexity
 from app.services.git_analytics.contributor_aggregator import aggregate_contributions
+from app.services.git_analytics.git_parser import parse_git_tags
 from app.services.scoring.engine import compute_scorecard
 from app.services.risks.engine import detect_risks
 
 logger = get_logger(__name__)
 workspace = RepoWorkspaceManager()
+
+
+class ScanCancelledError(Exception):
+    pass
+
+
+def _check_cancelled(scan: Scan, db: Session) -> None:
+    """Refresh scan from DB and raise ScanCancelledError if cancellation was requested."""
+    db.refresh(scan)
+    if scan.cancel_requested:
+        raise ScanCancelledError("Scan cancelled by user")
 
 
 def run_scan(scan_id: int, db: Session) -> None:
@@ -63,6 +77,7 @@ def run_scan(scan_id: int, db: Session) -> None:
             scan.branch = clone_result.branch
         db.commit()
         logger.info("repo_prepared", commit_sha=scan.commit_sha)
+        _check_cancelled(scan, db)
 
         # ── Stage 2: file analysis ─────────────────────────────────────────
         logger.info("stage_file_analysis")
@@ -79,12 +94,22 @@ def run_scan(scan_id: int, db: Session) -> None:
 
         _persist_languages(db, scan, file_result.languages)
         db.commit()
+        _check_cancelled(scan, db)
 
         # ── Stage 3: stack & dependencies ─────────────────────────────────
         logger.info("stage_stack_analysis")
         stack = detect_stack(repo_path, file_result.languages)
         scan.project_type = stack.project_type  # type: ignore[assignment]
         scan.primary_language = stack.primary_language
+        import json as _json
+        scan.frameworks_json = _json.dumps(stack.frameworks)
+        scan.package_managers_json = _json.dumps(stack.package_managers)
+        scan.ci_provider = stack.ci_provider
+        scan.infra_tools_json = _json.dumps(stack.infra_tools)
+        scan.linters_json = _json.dumps(stack.linters + stack.formatters)
+        scan.has_docker = stack.has_docker
+        scan.has_kubernetes = stack.has_kubernetes
+        scan.has_terraform = stack.has_terraform
 
         deps = parse_deps(repo_path)
         for d in deps:
@@ -97,10 +122,13 @@ def run_scan(scan_id: int, db: Session) -> None:
                 ecosystem=d.ecosystem,
             ))
         db.commit()
+        _check_cancelled(scan, db)
 
         # ── Stage 4: complexity ────────────────────────────────────────────
         logger.info("stage_complexity")
         complexity = analyze_complexity(repo_path, file_result.languages)
+
+        _check_cancelled(scan, db)
 
         # ── Stage 5: git analytics ─────────────────────────────────────────
         logger.info("stage_git_analytics")
@@ -108,7 +136,25 @@ def run_scan(scan_id: int, db: Session) -> None:
         dev_stats = aggregate_contributions(repo_path, overrides)
 
         _persist_developers(db, scan, repo.project_id, dev_stats, file_result.languages)
+
+        # Aggregate repo-level daily commits from all developers
+        repo_daily: dict[str, int] = defaultdict(int)
+        for ds in dev_stats:
+            for day_str, count in ds.daily_commits.items():
+                repo_daily[day_str] += count
+        _persist_repo_daily_activity(db, repo.id, repo_daily)
+
         db.commit()
+        _check_cancelled(scan, db)
+
+        # ── Stage 5b: git tags ─────────────────────────────────────────────
+        logger.info("stage_git_tags")
+        try:
+            _persist_git_tags(db, repo, repo_path)
+            db.commit()
+        except Exception as tags_exc:
+            logger.warning("git_tags_failed", scan_id=scan_id, error=str(tags_exc))
+            db.rollback()
 
         # ── Stage 6: scoring & risks ───────────────────────────────────────
         logger.info("stage_scoring")
@@ -138,6 +184,7 @@ def run_scan(scan_id: int, db: Session) -> None:
                 entity_ref=r.entity_ref,
             ))
         db.commit()
+        _check_cancelled(scan, db)
 
         # ── Stage 6b: personal data (PDn) scan ───────────────────────────────
         logger.info("stage_personal_data")
@@ -163,6 +210,11 @@ def run_scan(scan_id: int, db: Session) -> None:
         db.commit()
         logger.info("scan_completed", scan_id=scan_id)
 
+    except ScanCancelledError:
+        scan.status = ScanStatus.cancelled
+        scan.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        logger.info("scan_cancelled", scan_id=scan_id)
     except Exception as exc:
         logger.exception("scan_failed", scan_id=scan_id, error=str(exc))
         scan.status = ScanStatus.failed
@@ -172,6 +224,36 @@ def run_scan(scan_id: int, db: Session) -> None:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _persist_git_tags(db: Session, repo: Repository, repo_path) -> None:
+    from pathlib import Path
+    tags = parse_git_tags(Path(repo_path))
+    # Upsert: update existing, insert new
+    existing = {t.name: t for t in db.query(RepositoryGitTag).filter_by(repository_id=repo.id).all()}
+    for tag in tags:
+        if tag.name in existing:
+            row = existing[tag.name]
+            row.sha = tag.sha
+            row.message = tag.message
+            row.tagger_name = tag.tagger_name
+            row.tagger_email = tag.tagger_email
+            row.tagged_at = tag.tagged_at
+        else:
+            db.add(RepositoryGitTag(
+                repository_id=repo.id,
+                name=tag.name,
+                sha=tag.sha,
+                message=tag.message,
+                tagger_name=tag.tagger_name,
+                tagger_email=tag.tagger_email,
+                tagged_at=tag.tagged_at,
+            ))
+    # Remove tags no longer in the repo
+    current_names = {t.name for t in tags}
+    for name, row in existing.items():
+        if name not in current_names:
+            db.delete(row)
+
 
 def _persist_languages(db: Session, scan: Scan, languages: dict) -> None:
     total_loc = sum(s.loc for s in languages.values())
@@ -272,6 +354,25 @@ def _persist_developers(
             last_commit_at=ds.last_commit_at,
         ))
 
+        # Daily activity (upsert: take max count for re-scans)
+        from datetime import date as _date
+        existing_daily = {
+            row.commit_date: row
+            for row in db.query(DeveloperDailyActivity).filter_by(profile_id=profile.id).all()
+        }
+        for day_str, count in ds.daily_commits.items():
+            commit_date = _date.fromisoformat(day_str)
+            if commit_date in existing_daily:
+                row = existing_daily[commit_date]
+                if count > row.commit_count:
+                    row.commit_count = count
+            else:
+                db.add(DeveloperDailyActivity(
+                    profile_id=profile.id,
+                    commit_date=commit_date,
+                    commit_count=count,
+                ))
+
         # Language contributions
         total_files = sum(v[1] for v in ds.language_stats.values()) or 1
         for lang_name, stats in ds.language_stats.items():
@@ -310,4 +411,24 @@ def _persist_developers(
                 files_changed=stats[1],
                 loc_added=stats[2],
                 percentage=round(stats[1] / total_mod_files * 100, 2),
+            ))
+
+
+def _persist_repo_daily_activity(db: Session, repo_id: int, daily_counts: dict[str, int]) -> None:
+    from datetime import date as _date
+    existing = {
+        row.commit_date: row
+        for row in db.query(RepositoryDailyActivity).filter_by(repository_id=repo_id).all()
+    }
+    for day_str, count in daily_counts.items():
+        commit_date = _date.fromisoformat(day_str)
+        if commit_date in existing:
+            row = existing[commit_date]
+            if count > row.commit_count:
+                row.commit_count = count
+        else:
+            db.add(RepositoryDailyActivity(
+                repository_id=repo_id,
+                commit_date=commit_date,
+                commit_count=count,
             ))

@@ -30,7 +30,7 @@ export async function buildDevelopersTab() {
       <td>${fmt(d.files_changed)}</td>
       <td>${fmt(d.active_days)} days</td>
       <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-      <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('developer', ${d.developer_id}, ${JSON.stringify(tags)}, ${JSON.stringify(name)})">Edit tags</button></td>
+      <td onclick="event.stopPropagation()">${tagsChips(tags)}</td>
       <td onclick="event.stopPropagation()"><button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="navigate('developer', { developerId: ${d.developer_id} })">Profile →</button></td>
     </tr>`;
   }).join('');

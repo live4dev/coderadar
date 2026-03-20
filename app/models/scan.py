@@ -21,6 +21,7 @@ class ScanStatus(str, enum.Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class ProjectType(str, enum.Enum):
@@ -47,6 +48,7 @@ class Scan(Base):
     branch: Mapped[str] = mapped_column(String(255), nullable=False)
     commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="0")
 
     # File stats
     total_files: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -62,6 +64,16 @@ class Scan(Base):
         Enum(ProjectType), nullable=True
     )
     primary_language: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Stack details (stored as JSON arrays in Text columns)
+    frameworks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    package_managers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ci_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    infra_tools_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    has_docker: Mapped[bool | None] = mapped_column(nullable=True)
+    has_kubernetes: Mapped[bool | None] = mapped_column(nullable=True)
+    has_terraform: Mapped[bool | None] = mapped_column(nullable=True)
 
     # Complexity summary
     avg_file_loc: Mapped[float | None] = mapped_column(Float, nullable=True)
