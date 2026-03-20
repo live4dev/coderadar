@@ -7,7 +7,7 @@
 - [x] Add "fabric" to infrastructure tools
 - [x] Move "edit tags" from "ui" section to "admin" section
 - [x] Change colors in contribution calendar actual to pallet
-- Add Projects contributions calendar to page  "/ui/projects"
+- [x] Add Projects contributions calendar to page  "/ui/projects"
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements
 - [ ] Add Risks Map per project / repository to Analytic section

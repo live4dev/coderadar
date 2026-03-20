@@ -28,11 +28,18 @@ export async function renderProjects() {
   if (state.projSearch && state.projSearch.trim()) params.set('q', state.projSearch.trim());
   if (state.projHasScans) params.set('has_scans', 'true');
   const query = params.toString();
-  const projects = await api('/projects/summary' + (query ? '?' + query : ''));
+  const [projects, activity] = await Promise.all([
+    api('/projects/summary' + (query ? '?' + query : '')),
+    api('/projects/activity'),
+  ]);
   const hasFilters = (state.projSearch && state.projSearch.trim()) || state.projHasScans;
   let html = `
     <div class="page-title">Projects</div>
     <div class="page-subtitle">${projects.length} project${projects.length !== 1 ? 's' : ''}</div>
+    <div style="margin-top:8px;margin-bottom:24px">
+      <div class="section-header"><div class="section-title">Contribution activity</div></div>
+      <div id="proj-contrib-calendar" style="height:160px;width:100%"></div>
+    </div>
     <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
       <input type="text" id="proj-search" placeholder="Search by name or description…" value="${esc(state.projSearch)}" oninput="projSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:240px">
       <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
@@ -84,4 +91,55 @@ export async function renderProjects() {
     </table>`;
   }
   setMain(html);
+
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(today.getFullYear() - 1);
+  const calStart = yearAgo.toISOString().slice(0, 10);
+  const calEnd = today.toISOString().slice(0, 10);
+  const calData = activity.map(d => [d.date, d.count]);
+  const maxCount = calData.reduce((m, d) => Math.max(m, d[1]), 0);
+
+  const calEl = document.getElementById('proj-contrib-calendar');
+  if (calEl && window.echarts) {
+    const chart = window.echarts.init(calEl, null, { renderer: 'svg' });
+    chart.setOption({
+      tooltip: {
+        formatter: p => `${p.data[0]}<br/><b>${p.data[1]} commit${p.data[1] !== 1 ? 's' : ''}</b>`,
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: Math.max(maxCount, 1),
+        inRange: {
+          // color: ['#0F1116', '#191C26', '#212538', '#25293C', '#32364F'],
+          color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+        },
+      },
+      calendar: {
+        range: [calStart, calEnd],
+        cellSize: [13, 13],
+        left: 36,
+        right: 12,
+        top: 20,
+        bottom: 10,
+        itemStyle: { color: '#0F1116', borderColor: '#0d1117', borderWidth: 2 },
+        splitLine: { show: false },
+        yearLabel: { show: false },
+        monthLabel: { color: 'var(--text-muted)', fontSize: 11 },
+        dayLabel: {
+          firstDay: 1,
+          nameMap: ['', 'Mon', '', 'Wed', '', 'Fri', ''],
+          color: 'var(--text-muted)',
+          fontSize: 10,
+        },
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: calData,
+      }],
+    });
+    window.addEventListener('resize', () => chart.resize());
+  }
 }
