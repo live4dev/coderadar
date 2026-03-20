@@ -38,6 +38,7 @@ export async function renderAdminProjects() {
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminProjScanAll(${p.id})">Rescan Repos</button>
         <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminProjEdit(${p.id})">Edit</button>
+        <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="openEditTagsModal('project', ${p.id}, ${esc(JSON.stringify(p.tags || []))}, ${esc(JSON.stringify(p.name))})">Edit tags</button>
         <button class="btn btn-danger" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminProjDelete(${p.id}, ${JSON.stringify(esc(p.name))})">Delete</button>
       </td>
     </tr>`).join('');

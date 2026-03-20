@@ -83,7 +83,7 @@ export async function renderRepos() {
         <td style="font-size:12px;color:var(--text-muted)">${fmtDate(lastUpdated)}</td>
         <td>${ls && ls.primary_language ? esc(ls.primary_language) : '—'}</td>
         <td>${score != null ? `<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${scoreCls}" style="width:${score}%"></div></div><span class="score-num">${score.toFixed(0)}</span></div>` : '—'}</td>
-        <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('repository', ${r.id}, ${JSON.stringify(tags)}, ${JSON.stringify(r.name)})">Edit tags</button></td>
+        <td onclick="event.stopPropagation()">${tagsChips(tags)}</td>
         <td onclick="event.stopPropagation()">
             <a href="#" onclick="navigate('scans', { projectId: ${state.projectId}, repoId: ${r.id} })" class="link-style">View →</a>
         </td>

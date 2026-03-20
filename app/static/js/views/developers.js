@@ -60,7 +60,7 @@ function devRowHtml(d, totalCommits) {
     <td>${fmt(d.files_changed)}</td>
     <td>${fmt(d.active_days)}</td>
     <td style="font-size:11px;color:var(--text-muted)">${fmtDate(d.last_commit_at)}</td>
-    <td onclick="event.stopPropagation()">${tagsChips(tags)}<button class="btn btn-outline" style="margin-top:4px;padding:2px 8px;font-size:11px" onclick="openEditTagsModal('developer', ${d.id}, ${JSON.stringify(tags)}, ${JSON.stringify(devName)})">Edit tags</button></td>
+    <td onclick="event.stopPropagation()">${tagsChips(tags)}</td>
   </tr>`;
 }
 

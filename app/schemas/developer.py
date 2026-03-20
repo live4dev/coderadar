@@ -27,7 +27,7 @@ class DeveloperOut(BaseModel):
     @classmethod
     def _tags_from_orm(cls, data, handler):
         if not isinstance(data, dict) and hasattr(data, "tags") and data.tags is not None:
-            d = {"id": data.id, "profiles": data.profiles, "created_at": data.created_at, "tags": [t.tag for t in data.tags]}
+            d = {"id": data.id, "profiles": data.profiles, "created_at": data.created_at, "tags": [t.tag if hasattr(t, "tag") else t for t in data.tags]}
             return handler(d)
         return handler(data)
 

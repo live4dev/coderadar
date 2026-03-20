@@ -128,6 +128,7 @@ export async function renderAdminDevelopers() {
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
           <button class="btn btn-outline" style="padding:3px 10px;font-size:12px" onclick="adminDevToggle(${dev.id}, 'profile')">${mode === 'profile' ? '▲ Close' : 'Edit Profile'}</button>
           <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="adminDevToggle(${dev.id}, 'overrides')">${mode === 'overrides' ? '▲ Close' : 'Overrides'}</button>
+          <button class="btn btn-outline" style="padding:3px 10px;font-size:12px;margin-left:6px" onclick="openEditTagsModal('developer', ${dev.id}, ${esc(JSON.stringify(dev.tags || []))}, ${esc(JSON.stringify(displayName))})">Edit tags</button>
         </td>
       </tr>
       ${expandedRow}`;

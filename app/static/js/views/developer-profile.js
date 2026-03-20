@@ -134,7 +134,6 @@ export async function renderDeveloperProfile() {
     <div class="section-header" style="margin-top:20px"><div class="section-title">Tags</div></div>
     <div style="margin-bottom:20px">
       ${tagsChips(devTags)}
-      <button class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:12px" onclick="openEditTagsModal('developer', ${dev.id}, ${JSON.stringify(devTags)}, ${JSON.stringify(primaryName)})">Edit tags</button>
     </div>`;
   const profilesBlock = profiles.length ? `
     <div class="section-header" style="margin-top:20px"><div class="section-title">Profiles (${profiles.length})</div></div>
