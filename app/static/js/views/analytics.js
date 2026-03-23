@@ -5,6 +5,22 @@ import { fmt, setMain } from '../utils.js';
 export let treemapChartInstance = null;
 let stateTreemapMetric = 'loc';
 
+export let activityTreeChartInstance = null;
+let stateActivityMetric = 'commits';
+
+export function disposeActivityTree() {
+  if (activityTreeChartInstance) {
+    activityTreeChartInstance.dispose();
+    activityTreeChartInstance = null;
+  }
+}
+
+export function activityMetricChange() {
+  const sel = document.getElementById('activity-metric');
+  if (sel) stateActivityMetric = sel.value;
+  renderAnalytics();
+}
+
 export function disposeTreemap() {
   if (treemapChartInstance) {
     treemapChartInstance.dispose();
@@ -38,40 +54,87 @@ export async function renderAnalytics() {
       </select>
     </div>
     <div id="treemap-chart"></div>
+    <h2 style="margin-top:32px;margin-bottom:4px;font-size:15px;color:var(--text)">Activity Map</h2>
+    <p class="page-subtitle">Color intensity = developer activity per module (from latest completed scan per repo).</p>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+      <label for="activity-metric" style="font-size:13px;color:var(--text-muted)">Color by</label>
+      <select id="activity-metric" class="modal-input" style="width:140px;margin:0" onchange="activityMetricChange()">
+        <option value="commits" ${stateActivityMetric === 'commits' ? 'selected' : ''}>Commits</option>
+        <option value="lines" ${stateActivityMetric === 'lines' ? 'selected' : ''}>Lines added</option>
+      </select>
+    </div>
+    <div id="activity-tree-chart" style="width:100%;height:500px"></div>
   `);
+
   const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
-  const tree = await api('/analytics/treemap?' + params.toString());
+  const actParams = new URLSearchParams({ metric: stateActivityMetric });
+  const [tree, activityTree] = await Promise.all([
+    api('/analytics/treemap?' + params.toString()),
+    api('/analytics/activity-tree?' + actParams.toString()),
+  ]);
+
+  // --- existing treemap ---
   const root = treeToECharts(tree);
   if (!root || root.value === 0) {
     document.getElementById('treemap-chart').innerHTML = '<div class="empty"><p>No scan data yet. Run scans on repositories to see the treemap.</p></div>';
+  } else {
+    const chartEl = document.getElementById('treemap-chart');
+    if (!window.echarts) {
+      chartEl.innerHTML = '<div class="empty"><p>ECharts failed to load.</p></div>';
+    } else {
+      treemapChartInstance = echarts.init(chartEl, 'dark');
+      treemapChartInstance.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'item', formatter: function(info) {
+          const v = info.value;
+          const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
+          return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
+        }},
+        series: [{
+          type: 'treemap',
+          data: [root],
+          roam: false,
+          nodeClick: 'zoomToNode',
+          breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
+          label: { show: true, formatter: function(info) { return info.name; } },
+          itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
+          levels: [
+            { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
+            { itemStyle: { borderColor: 'var(--border)' } },
+          ],
+        }],
+      });
+    }
+  }
+
+  // --- activity tree ---
+  const activityRoot = treeToECharts(activityTree);
+  const actEl = document.getElementById('activity-tree-chart');
+  if (!activityRoot || activityRoot.value === 0) {
+    actEl.innerHTML = '<div class="empty"><p>No module activity data yet. Run scans to see the activity map.</p></div>';
     return;
   }
-  const chartEl = document.getElementById('treemap-chart');
-  if (!window.echarts) {
-    chartEl.innerHTML = '<div class="empty"><p>ECharts failed to load.</p></div>';
-    return;
-  }
-  treemapChartInstance = echarts.init(chartEl, 'dark');
-  const option = {
+  if (!window.echarts) return;
+  activityTreeChartInstance = echarts.init(actEl, 'dark');
+  const actLabel = stateActivityMetric === 'commits' ? 'Commits' : 'Lines added';
+  activityTreeChartInstance.setOption({
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', formatter: function(info) {
-      const v = info.value;
-      const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
-      return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
-    }},
+    tooltip: { trigger: 'item', formatter: (info) => `${info.name}<br/>${actLabel}: ${fmt(info.value)}` },
     series: [{
       type: 'treemap',
-      data: [root],
+      data: [activityRoot],
       roam: false,
       nodeClick: 'zoomToNode',
+      colorMappingBy: 'value',
+      color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
       breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
-      label: { show: true, formatter: function(info) { return info.name; } },
+      label: { show: true, formatter: (info) => info.name },
       itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
       levels: [
         { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
         { itemStyle: { borderColor: 'var(--border)' } },
+        { itemStyle: { borderColor: 'var(--border)' } },
       ],
     }],
-  };
-  treemapChartInstance.setOption(option);
+  });
 }

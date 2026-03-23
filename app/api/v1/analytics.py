@@ -3,10 +3,13 @@ import json
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus
+from app.models.contribution import DeveloperModuleContribution
+from app.models.module import Module
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
 
@@ -120,6 +123,90 @@ def get_treemap(
         type="root",
         children=project_nodes,
     )
+
+
+@router.get("/activity-tree", response_model=TreemapNode)
+def get_activity_tree(
+    metric: str = Query("commits", description="Activity metric: commits or lines"),
+    db: Session = Depends(get_db),
+):
+    """Return a tree for activity map: root -> projects -> repositories -> modules (value = commit count or loc added)."""
+    if metric not in ("commits", "lines"):
+        raise HTTPException(400, "metric must be commits or lines")
+
+    projects = db.query(Project).order_by(Project.id).all()
+    if not projects:
+        return TreemapNode(name="root", value=0, type="root", children=[])
+
+    repo_ids: list[int] = []
+    repo_to_project: dict[int, int] = {}
+    for p in projects:
+        repos = db.query(Repository).filter_by(project_id=p.id).all()
+        for r in repos:
+            repo_ids.append(r.id)
+            repo_to_project[r.id] = p.id
+
+    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+    if not scan_by_repo:
+        return TreemapNode(name="root", value=0, type="root", children=[])
+
+    scan_ids = {scan.id for scan in scan_by_repo.values()}
+
+    rows = (
+        db.query(
+            Module.id,
+            Module.name,
+            Module.repository_id,
+            func.sum(DeveloperModuleContribution.commit_count).label("total_commits"),
+            func.sum(DeveloperModuleContribution.loc_added).label("total_loc"),
+        )
+        .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
+        .filter(DeveloperModuleContribution.scan_id.in_(list(scan_ids)))
+        .group_by(Module.id, Module.name, Module.repository_id)
+        .all()
+    )
+
+    repo_modules: dict[int, list[tuple]] = defaultdict(list)
+    for r in rows:
+        val = (r.total_commits if metric == "commits" else r.total_loc) or 0
+        if val > 0:
+            repo_modules[r.repository_id].append((r.name, r.id, val))
+
+    repos_q = (
+        db.query(Repository.id, Repository.name, Repository.project_id)
+        .filter(Repository.id.in_(repo_ids))
+        .all()
+    )
+    proj_repo_nodes: dict[int, list[TreemapNode]] = {p.id: [] for p in projects}
+    proj_values: dict[int, int] = {p.id: 0 for p in projects}
+
+    for r in repos_q:
+        mod_tuples = repo_modules.get(r.id, [])
+        if not mod_tuples:
+            continue
+        module_nodes = [
+            TreemapNode(name=name, value=val, id=mid, type="module", children=None)
+            for name, mid, val in mod_tuples
+        ]
+        repo_val = sum(val for _, _, val in mod_tuples)
+        proj_repo_nodes[r.project_id].append(
+            TreemapNode(name=r.name, value=repo_val, id=r.id, type="repository", children=module_nodes)
+        )
+        proj_values[r.project_id] += repo_val
+
+    root_value = 0
+    project_nodes: list[TreemapNode] = []
+    for p in projects:
+        repo_nodes = proj_repo_nodes[p.id]
+        pval = proj_values[p.id]
+        if not repo_nodes:
+            continue
+        root_value += pval
+        project_nodes.append(
+            TreemapNode(name=p.name, value=pval, id=p.id, type="project", children=repo_nodes)
+        )
+
+    return TreemapNode(name="root", value=root_value, type="root", children=project_nodes)
 
 
 @router.get("/tech-map", response_model=TechMapResponse)
