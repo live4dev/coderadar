@@ -102,7 +102,9 @@ export async function renderAnalytics() {
         tooltip: { trigger: 'item', formatter: function(info) {
           const v = info.value;
           const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
-          return info.name + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
+          const path = info.treePathInfo || [];
+          const displayName = path.length >= 3 ? path[1].name + ' / ' + info.name : info.name;
+          return displayName + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
         }},
         series: [{
           type: 'treemap',
@@ -133,7 +135,11 @@ export async function renderAnalytics() {
   const actLabel = stateActivityMetric === 'commits' ? 'Commits' : 'Lines added';
   activityTreeChartInstance.setOption({
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', formatter: (info) => `${info.name}<br/>${actLabel}: ${fmt(info.value)}` },
+    tooltip: { trigger: 'item', formatter: (info) => {
+      const path = info.treePathInfo || [];
+      const displayName = path.length >= 3 ? path[1].name + ' / ' + info.name : info.name;
+      return `${displayName}<br/>${actLabel}: ${fmt(info.value)}`;
+    }},
     series: [{
       type: 'treemap',
       data: [activityRoot],
