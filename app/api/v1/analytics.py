@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus
-from app.models.contribution import DeveloperModuleContribution
-from app.models.module import Module
+from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
 
@@ -130,7 +129,7 @@ def get_activity_tree(
     metric: str = Query("commits", description="Activity metric: commits or lines"),
     db: Session = Depends(get_db),
 ):
-    """Return a tree for activity map: root -> projects -> repositories -> modules (value = commit count or loc added)."""
+    """Return a tree for activity map: root -> projects -> repositories (value = commit count or lines added)."""
     if metric not in ("commits", "lines"):
         raise HTTPException(400, "metric must be commits or lines")
 
@@ -139,12 +138,10 @@ def get_activity_tree(
         return TreemapNode(name="root", value=0, type="root", children=[])
 
     repo_ids: list[int] = []
-    repo_to_project: dict[int, int] = {}
     for p in projects:
         repos = db.query(Repository).filter_by(project_id=p.id).all()
         for r in repos:
             repo_ids.append(r.id)
-            repo_to_project[r.id] = p.id
 
     scan_by_repo = _latest_scan_per_repo(db, repo_ids)
     if not scan_by_repo:
@@ -154,23 +151,21 @@ def get_activity_tree(
 
     rows = (
         db.query(
-            Module.id,
-            Module.name,
-            Module.repository_id,
-            func.sum(DeveloperModuleContribution.commit_count).label("total_commits"),
-            func.sum(DeveloperModuleContribution.loc_added).label("total_loc"),
+            Scan.repository_id,
+            func.sum(DeveloperContribution.commit_count).label("total_commits"),
+            func.sum(DeveloperContribution.insertions).label("total_lines"),
         )
-        .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
-        .filter(DeveloperModuleContribution.scan_id.in_(list(scan_ids)))
-        .group_by(Module.id, Module.name, Module.repository_id)
+        .join(DeveloperContribution, DeveloperContribution.scan_id == Scan.id)
+        .filter(Scan.id.in_(list(scan_ids)))
+        .group_by(Scan.repository_id)
         .all()
     )
 
-    repo_modules: dict[int, list[tuple]] = defaultdict(list)
+    repo_activity: dict[int, int] = {}
     for r in rows:
-        val = (r.total_commits if metric == "commits" else r.total_loc) or 0
+        val = (r.total_commits if metric == "commits" else r.total_lines) or 0
         if val > 0:
-            repo_modules[r.repository_id].append((r.name, r.id, val))
+            repo_activity[r.repository_id] = val
 
     repos_q = (
         db.query(Repository.id, Repository.name, Repository.project_id)
@@ -181,18 +176,13 @@ def get_activity_tree(
     proj_values: dict[int, int] = {p.id: 0 for p in projects}
 
     for r in repos_q:
-        mod_tuples = repo_modules.get(r.id, [])
-        if not mod_tuples:
+        val = repo_activity.get(r.id, 0)
+        if val == 0:
             continue
-        module_nodes = [
-            TreemapNode(name=name, value=val, id=mid, type="module", children=None)
-            for name, mid, val in mod_tuples
-        ]
-        repo_val = sum(val for _, _, val in mod_tuples)
         proj_repo_nodes[r.project_id].append(
-            TreemapNode(name=r.name, value=repo_val, id=r.id, type="repository", children=module_nodes)
+            TreemapNode(name=r.name, value=val, id=r.id, type="repository", children=None)
         )
-        proj_values[r.project_id] += repo_val
+        proj_values[r.project_id] += val
 
     root_value = 0
     project_nodes: list[TreemapNode] = []

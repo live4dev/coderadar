@@ -47,7 +47,7 @@ export async function renderAnalytics() {
     <h1 class="page-title">Analytics</h1>
     <p class="page-subtitle">Treemap: LOC or files by project and repository (from latest completed scan per repo).</p>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-      <label for="treemap-metric" style="font-size:13px;color:var(--text-muted)">Size by</label>
+      <label for="treemap-metric" style="font-size:13px;color:#64748b">Size by</label>
       <select id="treemap-metric" class="modal-input" style="width:120px;margin:0" onchange="treemapMetricChange()">
         <option value="loc" ${stateTreemapMetric === 'loc' ? 'selected' : ''}>LOC</option>
         <option value="files" ${stateTreemapMetric === 'files' ? 'selected' : ''}>Files</option>
@@ -55,9 +55,9 @@ export async function renderAnalytics() {
     </div>
     <div id="treemap-chart"></div>
     <h2 style="margin-top:32px;margin-bottom:4px;font-size:15px;color:var(--text)">Activity Map</h2>
-    <p class="page-subtitle">Color intensity = developer activity per module (from latest completed scan per repo).</p>
+    <p class="page-subtitle">Color intensity = developer activity per repository (from latest completed scan per repo).</p>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-      <label for="activity-metric" style="font-size:13px;color:var(--text-muted)">Color by</label>
+      <label for="activity-metric" style="font-size:13px;color:#64748b">Color by</label>
       <select id="activity-metric" class="modal-input" style="width:140px;margin:0" onchange="activityMetricChange()">
         <option value="commits" ${stateActivityMetric === 'commits' ? 'selected' : ''}>Commits</option>
         <option value="lines" ${stateActivityMetric === 'lines' ? 'selected' : ''}>Lines added</option>
@@ -95,12 +95,12 @@ export async function renderAnalytics() {
           data: [root],
           roam: false,
           nodeClick: 'zoomToNode',
-          breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
+          breadcrumb: { show: true, itemStyle: { color: '#22263a' }, textStyle: { color: '#64748b' } },
           label: { show: true, formatter: function(info) { return info.name; } },
-          itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
+          itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
           levels: [
-            { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
-            { itemStyle: { borderColor: 'var(--border)' } },
+            { itemStyle: { borderColor: '#2e3350' }, upperLabel: { show: true } },
+            { itemStyle: { borderColor: '#2e3350' } },
           ],
         }],
       });
@@ -111,7 +111,7 @@ export async function renderAnalytics() {
   const activityRoot = treeToECharts(activityTree);
   const actEl = document.getElementById('activity-tree-chart');
   if (!activityRoot || activityRoot.value === 0) {
-    actEl.innerHTML = '<div class="empty"><p>No module activity data yet. Run scans to see the activity map.</p></div>';
+    actEl.innerHTML = '<div class="empty"><p>No activity data yet. Run scans to see the activity map.</p></div>';
     return;
   }
   if (!window.echarts) return;
@@ -127,13 +127,12 @@ export async function renderAnalytics() {
       nodeClick: 'zoomToNode',
       colorMappingBy: 'value',
       color: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
-      breadcrumb: { show: true, itemStyle: { color: 'var(--surface2)' }, textStyle: { color: 'var(--text-muted)' } },
+      breadcrumb: { show: true, itemStyle: { color: '#22263a' }, textStyle: { color: '#64748b' } },
       label: { show: true, formatter: (info) => info.name },
-      itemStyle: { borderColor: 'var(--border)', borderWidth: 1 },
+      itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
       levels: [
-        { itemStyle: { borderColor: 'var(--border)' }, upperLabel: { show: true } },
-        { itemStyle: { borderColor: 'var(--border)' } },
-        { itemStyle: { borderColor: 'var(--border)' } },
+        { itemStyle: { borderColor: '#2e3350' }, upperLabel: { show: true } },
+        { itemStyle: { borderColor: '#2e3350' } },
       ],
     }],
   });
