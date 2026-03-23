@@ -1,13 +1,14 @@
 """Analytics API: treemap tree and similar."""
 import json
 from collections import defaultdict
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Project, Repository, Scan, ScanStatus
+from app.models import Project, Repository, Scan, ScanStatus, RepositoryDailyActivity
 from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
@@ -127,11 +128,14 @@ def get_treemap(
 @router.get("/activity-tree", response_model=TreemapNode)
 def get_activity_tree(
     metric: str = Query("commits", description="Activity metric: commits or lines"),
+    period: str = Query("1y", description="Time window: 1m, 3m, 6m, 1y"),
     db: Session = Depends(get_db),
 ):
     """Return a tree for activity map: root -> projects -> repositories (value = commit count or lines added)."""
     if metric not in ("commits", "lines"):
         raise HTTPException(400, "metric must be commits or lines")
+    if period not in ("1m", "3m", "6m", "1y"):
+        raise HTTPException(400, "period must be 1m, 3m, 6m or 1y")
 
     projects = db.query(Project).order_by(Project.id).all()
     if not projects:
@@ -143,29 +147,38 @@ def get_activity_tree(
         for r in repos:
             repo_ids.append(r.id)
 
-    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
-    if not scan_by_repo:
-        return TreemapNode(name="root", value=0, type="root", children=[])
-
-    scan_ids = {scan.id for scan in scan_by_repo.values()}
-
-    rows = (
-        db.query(
-            Scan.repository_id,
-            func.sum(DeveloperContribution.commit_count).label("total_commits"),
-            func.sum(DeveloperContribution.insertions).label("total_lines"),
+    if metric == "commits":
+        period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+        cutoff = date.today() - timedelta(days=period_days[period])
+        rows = (
+            db.query(
+                RepositoryDailyActivity.repository_id,
+                func.sum(RepositoryDailyActivity.commit_count).label("total"),
+            )
+            .filter(
+                RepositoryDailyActivity.repository_id.in_(repo_ids),
+                RepositoryDailyActivity.commit_date >= cutoff,
+            )
+            .group_by(RepositoryDailyActivity.repository_id)
+            .all()
         )
-        .join(DeveloperContribution, DeveloperContribution.scan_id == Scan.id)
-        .filter(Scan.id.in_(list(scan_ids)))
-        .group_by(Scan.repository_id)
-        .all()
-    )
-
-    repo_activity: dict[int, int] = {}
-    for r in rows:
-        val = (r.total_commits if metric == "commits" else r.total_lines) or 0
-        if val > 0:
-            repo_activity[r.repository_id] = val
+        repo_activity: dict[int, int] = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
+    else:
+        scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+        if not scan_by_repo:
+            return TreemapNode(name="root", value=0, type="root", children=[])
+        scan_ids = {scan.id for scan in scan_by_repo.values()}
+        rows = (
+            db.query(
+                Scan.repository_id,
+                func.sum(DeveloperContribution.insertions).label("total"),
+            )
+            .join(DeveloperContribution, DeveloperContribution.scan_id == Scan.id)
+            .filter(Scan.id.in_(list(scan_ids)))
+            .group_by(Scan.repository_id)
+            .all()
+        )
+        repo_activity = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
 
     repos_q = (
         db.query(Repository.id, Repository.name, Repository.project_id)

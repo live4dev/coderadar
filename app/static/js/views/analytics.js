@@ -7,6 +7,13 @@ let stateTreemapMetric = 'loc';
 
 export let activityTreeChartInstance = null;
 let stateActivityMetric = 'commits';
+let stateActivityPeriod = '1y';
+
+export function activityPeriodChange() {
+  const sel = document.getElementById('activity-period');
+  if (sel) stateActivityPeriod = sel.value;
+  renderAnalytics();
+}
 
 export function disposeActivityTree() {
   if (activityTreeChartInstance) {
@@ -62,12 +69,19 @@ export async function renderAnalytics() {
         <option value="commits" ${stateActivityMetric === 'commits' ? 'selected' : ''}>Commits</option>
         <option value="lines" ${stateActivityMetric === 'lines' ? 'selected' : ''}>Lines added</option>
       </select>
+      <label for="activity-period" style="font-size:13px;color:#64748b;margin-left:16px">Period</label>
+      <select id="activity-period" class="modal-input" style="width:120px;margin:0" onchange="activityPeriodChange()">
+        <option value="1m" ${stateActivityPeriod === '1m' ? 'selected' : ''}>1 month</option>
+        <option value="3m" ${stateActivityPeriod === '3m' ? 'selected' : ''}>3 months</option>
+        <option value="6m" ${stateActivityPeriod === '6m' ? 'selected' : ''}>6 months</option>
+        <option value="1y" ${stateActivityPeriod === '1y' ? 'selected' : ''}>1 year</option>
+      </select>
     </div>
     <div id="activity-tree-chart" style="width:100%;height:500px"></div>
   `);
 
   const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
-  const actParams = new URLSearchParams({ metric: stateActivityMetric });
+  const actParams = new URLSearchParams({ metric: stateActivityMetric, period: stateActivityPeriod });
   const [tree, activityTree] = await Promise.all([
     api('/analytics/treemap?' + params.toString()),
     api('/analytics/activity-tree?' + actParams.toString()),
