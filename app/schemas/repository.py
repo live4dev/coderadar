@@ -95,6 +95,7 @@ class RepositoryWithLatestScanOut(BaseModel):
 
 
 class RepositoryUpdate(BaseModel):
+    project_id: int | None = None
     name: str
     url: str
     provider_type: str
