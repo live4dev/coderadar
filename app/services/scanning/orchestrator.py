@@ -18,6 +18,7 @@ from app.services.vcs.workspace import RepoWorkspaceManager
 from app.services.analysis.file_analyzer import analyze_files
 from app.services.analysis.stack_detector import detect_stack
 from app.services.analysis.dependency_parser import parse_all as parse_deps
+from app.services.analysis.license_scanner import scan_licenses
 from app.services.analysis.complexity import analyze_complexity
 from app.services.git_analytics.contributor_aggregator import aggregate_contributions
 from app.services.git_analytics.git_parser import parse_git_tags
@@ -112,7 +113,9 @@ def run_scan(scan_id: int, db: Session) -> None:
         scan.has_terraform = stack.has_terraform
 
         deps = parse_deps(repo_path)
+        license_map = scan_licenses(repo_path, deps)
         for d in deps:
+            lic = license_map.get((d.name, d.ecosystem))
             db.add(Dependency(
                 scan_id=scan.id,
                 name=d.name,
@@ -120,6 +123,10 @@ def run_scan(scan_id: int, db: Session) -> None:
                 dep_type=d.dep_type,
                 manifest_file=d.manifest_file,
                 ecosystem=d.ecosystem,
+                license_spdx=lic.spdx if lic else None,
+                license_raw=lic.raw if lic else None,
+                license_risk=lic.risk if lic else "unknown",
+                is_direct=lic.is_direct if lic else True,
             ))
         db.commit()
         _check_cancelled(scan, db)

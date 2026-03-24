@@ -12,6 +12,7 @@ class ParsedDependency:
     dep_type: str  # prod | dev | test | unknown
     manifest_file: str
     ecosystem: str
+    is_direct: bool = True
 
 
 def parse_all(repo_root: Path) -> list[ParsedDependency]:

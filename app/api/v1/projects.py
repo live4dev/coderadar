@@ -45,6 +45,22 @@ def list_projects(db: Session = Depends(get_db)):
 PROJECT_SORT_FIELDS = {"name", "id", "repo_count", "scanned", "loc", "files", "avg_score", "last_scan_at"}
 
 
+@router.get("/activity", response_model=list[RepositoryDailyActivityOut])
+def get_all_projects_activity(db: Session = Depends(get_db)):
+    """Daily commit activity aggregated across all projects."""
+    rows = (
+        db.query(
+            RepositoryDailyActivity.commit_date,
+            func.sum(RepositoryDailyActivity.commit_count).label("count"),
+        )
+        .join(Repository, RepositoryDailyActivity.repository_id == Repository.id)
+        .group_by(RepositoryDailyActivity.commit_date)
+        .order_by(RepositoryDailyActivity.commit_date)
+        .all()
+    )
+    return [RepositoryDailyActivityOut(date=str(r.commit_date), count=int(r.count)) for r in rows]
+
+
 @router.get("/summary", response_model=list[ProjectSummaryOut])
 def list_projects_summary(
     sort_by: str = Query("name", description="Sort by: name, id, repo_count, scanned, loc, files, avg_score, last_scan_at"),

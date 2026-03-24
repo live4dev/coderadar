@@ -73,8 +73,23 @@ class DependencyOut(BaseModel):
     dep_type: str
     manifest_file: str | None
     ecosystem: str | None
+    license_spdx: str | None = None
+    license_raw: str | None = None
+    license_risk: str = "unknown"
+    is_direct: bool = True
 
     model_config = {"from_attributes": True}
+
+
+class DependencyLicenseSummaryOut(BaseModel):
+    total: int
+    direct_count: int
+    transitive_count: int
+    license_counts: dict[str, int]  # SPDX id (or "unknown") → count
+    unknown_count: int
+    risky_count: int
+    safe_count: int
+    risk_score: int  # 0–100: percentage of risky deps
 
 
 class ScanScoreOut(BaseModel):

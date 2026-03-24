@@ -13,7 +13,7 @@ from app.models.scan import ScanStatus
 from app.services.source_links import build_source_url
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
-    DependencyOut, ScanScoreOut, ScanRiskOut,
+    DependencyOut, DependencyLicenseSummaryOut, ScanScoreOut, ScanRiskOut,
     PersonalDataOut, PersonalDataCountOut, PersonalDataFindingOut,
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
@@ -106,6 +106,38 @@ def get_scan_languages(scan_id: int, db: Session = Depends(get_db)):
 def get_scan_dependencies(scan_id: int, db: Session = Depends(get_db)):
     _get_scan_or_404(scan_id, db)
     return db.query(Dependency).filter_by(scan_id=scan_id).all()
+
+
+@router.get("/{scan_id}/license-summary", response_model=DependencyLicenseSummaryOut)
+def get_license_summary(scan_id: int, db: Session = Depends(get_db)):
+    _get_scan_or_404(scan_id, db)
+    rows = db.query(Dependency).filter_by(scan_id=scan_id).all()
+    if not rows:
+        return DependencyLicenseSummaryOut(
+            total=0, direct_count=0, transitive_count=0,
+            license_counts={}, unknown_count=0, risky_count=0,
+            safe_count=0, risk_score=0,
+        )
+    total = len(rows)
+    direct_count = sum(1 for r in rows if r.is_direct)
+    risky_count = sum(1 for r in rows if r.license_risk == "risky")
+    safe_count = sum(1 for r in rows if r.license_risk == "safe")
+    unknown_count = total - risky_count - safe_count
+    license_counts: dict[str, int] = {}
+    for r in rows:
+        key = r.license_spdx or "unknown"
+        license_counts[key] = license_counts.get(key, 0) + 1
+    risk_score = min(100, round(risky_count / max(total, 1) * 100))
+    return DependencyLicenseSummaryOut(
+        total=total,
+        direct_count=direct_count,
+        transitive_count=total - direct_count,
+        license_counts=license_counts,
+        unknown_count=unknown_count,
+        risky_count=risky_count,
+        safe_count=safe_count,
+        risk_score=risk_score,
+    )
 
 
 @router.get("/{scan_id}/scores", response_model=list[ScanScoreOut])

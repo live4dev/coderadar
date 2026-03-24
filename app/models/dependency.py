@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from sqlalchemy import String, ForeignKey, Enum
+from sqlalchemy import String, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.db.base import Base
@@ -30,5 +30,10 @@ class Dependency(Base):
     )
     manifest_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ecosystem: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    license_spdx: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    license_raw: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    license_risk: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    is_direct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     scan: Mapped[Scan] = relationship("Scan", back_populates="dependencies")

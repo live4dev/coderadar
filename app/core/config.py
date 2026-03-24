@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Git history: max commits to scan (0 = unlimited)
     git_history_scan_limit: int = 0
 
+    # License scanning: call public registries (PyPI, crates.io, RubyGems, Maven Central)
+    # for packages whose licence was not found in local files.
+    enable_license_api_enrichment: bool = True
+
     @property
     def repos_cache_path(self) -> Path:
         p = Path(self.repos_cache_dir)
