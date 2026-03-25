@@ -2,6 +2,41 @@ import { state } from '../state.js';
 import { api } from '../api.js';
 import { esc, fmtDate, setMain, showError } from '../utils.js';
 
+export function licenseSort(col) {
+  if (state.licenseReportSortBy === col) {
+    state.licenseReportSortOrder = state.licenseReportSortOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.licenseReportSortBy = col;
+    state.licenseReportSortOrder = (col === 'project_name' || col === 'repository_name') ? 'asc' : 'desc';
+  }
+  window.render();
+}
+
+function sortIcon(col) {
+  if (state.licenseReportSortBy !== col) return ' <span style="opacity:0.4">↕</span>';
+  return state.licenseReportSortOrder === 'asc' ? ' <span style="font-size:10px">↑</span>' : ' <span style="font-size:10px">↓</span>';
+}
+
+function sortEntries(entries) {
+  const col = state.licenseReportSortBy;
+  const asc = state.licenseReportSortOrder === 'asc';
+  return [...entries].sort((a, b) => {
+    let av = a[col];
+    let bv = b[col];
+    if (col === 'scan_date') {
+      av = a.scan_completed_at || a.scan_started_at || '';
+      bv = b.scan_completed_at || b.scan_started_at || '';
+    }
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av == null) av = '';
+    if (bv == null) bv = '';
+    if (av < bv) return asc ? -1 : 1;
+    if (av > bv) return asc ? 1 : -1;
+    return 0;
+  });
+}
+
 export async function renderLicenseReport() {
   setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
   const params = new URLSearchParams();
@@ -37,6 +72,8 @@ export async function renderLicenseReport() {
     totalRisky += e.risky_count;
     if (e.risky_count > 0) reposWithRiskySet.add(e.repository_id);
   });
+
+  entries = sortEntries(entries);
 
   const filterRow = `
     <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;gap:12px;align-items:center">
@@ -79,7 +116,7 @@ export async function renderLicenseReport() {
     const scanDate = e.scan_completed_at || e.scan_started_at;
     const goScan = "navigate('scan', { projectId: " + e.project_id + ", repoId: " + e.repository_id + ", scanId: " + e.scan_id + ", tab: 'dependencies' })";
     const riskScore = e.risk_score;
-    const riskColor = riskScore === 0 ? 'var(--green,#4ade80)' : riskScore < 10 ? 'var(--green,#4ade80)' : riskScore < 30 ? 'var(--yellow,#fbbf24)' : 'var(--red,#f87171)';
+    const riskColor = riskScore < 10 ? 'var(--green,#4ade80)' : riskScore < 30 ? 'var(--yellow,#fbbf24)' : 'var(--red,#f87171)';
     const riskBadge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;background:' + riskColor + '22;color:' + riskColor + '">' + riskScore + '%</span>';
 
     const ecosystemTags = Object.entries(e.ecosystem_counts || {}).map(([eco, cnt]) =>
@@ -109,11 +146,22 @@ export async function renderLicenseReport() {
       '</tr>';
   }).join('');
 
+  const th = (label, col) =>
+    '<th class="sortable" onclick="licenseSort(\'' + col + '\')" title="Sort by ' + label.toLowerCase() + '">' + label + sortIcon(col) + '</th>';
+
   const tableHtml = entries.length ? `
     <div style="overflow-x:auto">
     <table>
       <thead><tr>
-        <th>Project</th><th>Repository</th><th>Last scan</th><th>Total</th><th>Safe</th><th>Risky</th><th>Unknown</th><th>Risk score</th><th>Ecosystems</th><th>Risky packages</th><th></th>
+        ${th('Project', 'project_name')}
+        ${th('Repository', 'repository_name')}
+        ${th('Last scan', 'scan_date')}
+        ${th('Total', 'total')}
+        ${th('Safe', 'safe_count')}
+        ${th('Risky', 'risky_count')}
+        ${th('Unknown', 'unknown_count')}
+        ${th('Risk score', 'risk_score')}
+        <th>Ecosystems</th><th>Risky packages</th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>

@@ -14,7 +14,7 @@ import { renderDevelopersSummary, devSort, devSearchInput } from './views/develo
 import { renderDeveloperProfile } from './views/developer-profile.js';
 import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance, activityMetricChange, activityPeriodChange, disposeActivityTree, activityTreeChartInstance } from './views/analytics.js';
 import { renderPersonalDataReport } from './views/personal-data-report.js';
-import { renderLicenseReport } from './views/license-report.js';
+import { renderLicenseReport, licenseSort } from './views/license-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
 import { renderScansQueue, cancelScan, stopQueueRefresh } from './views/scans-queue.js';
 import { setMain, showError } from './utils.js';
@@ -60,6 +60,7 @@ window.treemapMetricChange = treemapMetricChange;
 window.activityMetricChange = activityMetricChange;
 window.activityPeriodChange = activityPeriodChange;
 window.techMapProjectChange = techMapProjectChange;
+window.licenseSort = licenseSort;
 window.triggerScan = triggerScan;
 window.showRepoTab = showRepoTab;
 window.cancelScan = cancelScan;
