@@ -30,9 +30,15 @@ function buildDevParams(offset) {
   params.set('sort_by', state.devSortBy);
   params.set('order', state.devSortOrder);
   if (state.devSearch && state.devSearch.trim()) params.set('q', state.devSearch.trim());
+  if (state.devTagFilter) params.set('tag', state.devTagFilter);
   params.set('offset', offset);
   params.set('limit', 200);
   return params.toString();
+}
+
+export function devTagToggle(tag) {
+  state.devTagFilter = state.devTagFilter === tag ? null : tag;
+  window.render();
 }
 
 function devRowHtml(d, totalCommits) {
@@ -108,9 +114,10 @@ export async function renderDevelopersSummary() {
   state.devHasMore = false;
   devLoading = false;
 
-  const [data, projects] = await Promise.all([
+  const [data, projects, allTags] = await Promise.all([
     api('/developers?' + buildDevParams(0)),
     api('/projects'),
+    api('/developers/tags'),
   ]);
 
   state.devItems = data.items;
@@ -121,6 +128,15 @@ export async function renderDevelopersSummary() {
   const totalCommits = state.devTotalCommitsAll;
   const topOne = state.devItems.length ? state.devItems[0] : null;
 
+  const tagChipsHtml = allTags.length ? `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px">
+      <span style="font-size:12px;color:var(--text-muted);margin-right:4px">Tag:</span>
+      ${allTags.map(t => {
+        const active = state.devTagFilter === t;
+        return `<span onclick="devTagToggle(${JSON.stringify(t)})" style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'rgba(99,102,241,0.15)' : 'var(--surface2)'};color:${active ? 'var(--accent-hover)' : 'var(--text-muted)'}">${esc(t)}</span>`;
+      }).join('')}
+    </div>` : '';
+
   const filterHtml = `
     <input type="text" id="dev-search" placeholder="Search by name or email…" value="${esc(state.devSearch)}" oninput="devSearchInput();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:200px;margin-right:12px">
     ${projects.length ? `
@@ -128,7 +144,8 @@ export async function renderDevelopersSummary() {
     <select id="dev-project-filter" onchange="state.projectFilter=this.value?parseInt(this.value,10):null; render();" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
       <option value="">All projects</option>
       ${projects.map(p => `<option value="${p.id}" ${state.projectFilter === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-    </select>` : ''}`;
+    </select>` : ''}
+    ${tagChipsHtml}`;
 
   const statsRow = `
     <div class="stats-row">
@@ -178,7 +195,7 @@ export async function renderDevelopersSummary() {
     </table>
     <div id="dev-load-more-sentinel" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">${state.devHasMore ? '' : ''}</div>`;
   } else {
-    tableHtml = `<div class="empty"><div class="icon">👥</div><p>${state.devSearch && state.devSearch.trim() ? 'No developers match your search.' : 'No developers yet. Run scans on repositories to see contributors.'}</p></div>`;
+    tableHtml = `<div class="empty"><div class="icon">👥</div><p>${(state.devSearch && state.devSearch.trim()) || state.devTagFilter ? 'No developers match your filters.' : 'No developers yet. Run scans on repositories to see contributors.'}</p></div>`;
   }
 
   setMain(`

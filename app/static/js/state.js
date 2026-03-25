@@ -13,6 +13,7 @@ export const state = {
   devSortBy: 'commits',
   devSortOrder: 'desc',
   devSearch: '',
+  devTagFilter: null,
   devOffset: 0,
   devItems: [],
   devHasMore: false,
