@@ -14,6 +14,7 @@ import { renderDevelopersSummary, devSort, devSearchInput } from './views/develo
 import { renderDeveloperProfile } from './views/developer-profile.js';
 import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance, activityMetricChange, activityPeriodChange, disposeActivityTree, activityTreeChartInstance } from './views/analytics.js';
 import { renderPersonalDataReport } from './views/personal-data-report.js';
+import { renderLicenseReport } from './views/license-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
 import { renderScansQueue, cancelScan, stopQueueRefresh } from './views/scans-queue.js';
 import { setMain, showError } from './utils.js';
@@ -33,6 +34,7 @@ async function render() {
     else if (state.view === 'developer')       await renderDeveloperProfile();
     else if (state.view === 'analytics')       await renderAnalytics();
     else if (state.view === 'personal-data-report') await renderPersonalDataReport();
+    else if (state.view === 'license-report')       await renderLicenseReport();
     else if (state.view === 'tech-map')            await renderTechMap();
     else if (state.view === 'admin-projects')   await renderAdminProjects();
     else if (state.view === 'admin-repos')      await renderAdminRepos();
@@ -75,6 +77,7 @@ document.getElementById('nav-projects').addEventListener('click', () => navigate
 document.getElementById('nav-developers-list').addEventListener('click', () => navigate('developers'));
 document.getElementById('nav-analytics').addEventListener('click', () => navigate('analytics'));
 document.getElementById('nav-personal-data-report').addEventListener('click', () => navigate('personal-data-report'));
+document.getElementById('nav-license-report').addEventListener('click', () => navigate('license-report'));
 document.getElementById('nav-tech-map').addEventListener('click', () => navigate('tech-map'));
 document.getElementById('nav-scans').addEventListener('click', () => navigate('scans'));
 document.getElementById('nav-scans-queue').addEventListener('click', () => navigate('scans-queue'));
