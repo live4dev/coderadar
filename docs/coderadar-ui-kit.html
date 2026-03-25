@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeRadar — UI Kit</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════ */
+:root {
+  /* Core palette */
+  --bg:            #0f1117;
+  --surface:       #1a1d27;
+  --surface2:      #22263a;
+  --surface3:      #2a2f47;
+  --border:        #2e3350;
+  --border-subtle: #232640;
+
+  /* Accent */
+  --accent:        #6366f1;
+  --accent-hover:  #818cf8;
+  --accent-glow:   rgba(99,102,241,0.18);
+
+  /* Text */
+  --text:          #e2e8f0;
+  --text-muted:    #64748b;
+  --text-dim:      #475569;
+
+  /* Semantic colours */
+  --green:   #22c55e;
+  --green-bg: rgba(34,197,94,0.12);
+  --yellow:  #f59e0b;
+  --yellow-bg: rgba(245,158,11,0.12);
+  --red:     #ef4444;
+  --red-bg:  rgba(239,68,68,0.12);
+  --orange:  #f97316;
+  --orange-bg: rgba(249,115,22,0.12);
+  --blue:    #38bdf8;
+  --blue-bg: rgba(56,189,248,0.12);
+
+  /* Typography */
+  --font-ui:   'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Spacing */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
+}
+
+/* ═══════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════
+   KIT LAYOUT — nav + content
+═══════════════════════════════════════ */
+.kit-nav {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 28px 0 20px;
+  overflow-y: auto;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.kit-nav-brand {
+  padding: 0 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.kit-nav-brand .logo-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  letter-spacing: -0.4px;
+}
+.kit-nav-brand .logo-text span { color: var(--text-muted); font-weight: 400; }
+.kit-nav-brand .kit-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+}
+
+.kit-nav-section {
+  padding: 0 12px;
+  margin-bottom: 20px;
+}
+.kit-nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+.kit-nav-link {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: all 0.1s;
+  cursor: pointer;
+}
+.kit-nav-link:hover { background: var(--surface2); color: var(--text); }
+.kit-nav-link.active { background: var(--accent-glow); color: var(--accent-hover); }
+
+.kit-content {
+  margin-left: 220px;
+  padding: 48px 56px;
+  max-width: 1100px;
+}
+
+/* ═══════════════════════════════════════
+   SECTION STRUCTURE
+═══════════════════════════════════════ */
+.kit-section {
+  margin-bottom: 72px;
+  scroll-margin-top: 32px;
+}
+
+.kit-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 32px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.kit-section-number {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  min-width: 28px;
+}
+
+.kit-section-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.4px;
+}
+
+.kit-subsection {
+  margin-bottom: 40px;
+}
+
+.kit-subsection-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.demo-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.demo-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.demo-box-dark {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.code-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* ═══════════════════════════════════════
+   1. COLORS
+═══════════════════════════════════════ */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.color-chip {
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.color-swatch {
+  height: 64px;
+}
+
+.color-info {
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.color-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.color-var {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════
+   2. TYPOGRAPHY
+═══════════════════════════════════════ */
+.type-specimen + .type-specimen { margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 20px; }
+
+.type-meta {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.type-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.t-display { font-size: 36px; font-weight: 700; letter-spacing: -0.8px; line-height: 1.15; }
+.t-h1      { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+.t-h2      { font-size: 15px; font-weight: 600; }
+.t-body    { font-size: 14px; font-weight: 400; line-height: 1.7; }
+.t-small   { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.t-label   { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.t-mono    { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+.t-caption { font-size: 11px; color: var(--text-dim); }
+
+/* ═══════════════════════════════════════
+   3. BUTTONS
+═══════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--accent-hover); box-shadow: 0 0 0 3px var(--accent-glow); }
+.btn-primary:active { transform: translateY(1px); }
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent-hover); background: var(--accent-glow); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+.btn-danger {
+  background: rgba(239,68,68,0.12);
+  color: #f87171;
+  border: 1px solid rgba(239,68,68,0.25);
+}
+.btn-danger:hover { background: rgba(239,68,68,0.22); border-color: var(--red); }
+
+.btn-success {
+  background: rgba(34,197,94,0.12);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,0.25);
+}
+.btn-success:hover { background: rgba(34,197,94,0.22); border-color: var(--green); }
+
+.btn-sm { padding: 5px 11px; font-size: 12px; border-radius: var(--r-md); }
+.btn-lg { padding: 11px 22px; font-size: 14px; border-radius: var(--r-lg); }
+.btn-icon { padding: 8px; border-radius: var(--r-md); }
+
+.btn:disabled, .btn[disabled] { opacity: 0.42; cursor: not-allowed; pointer-events: none; }
+
+/* ═══════════════════════════════════════
+   4. BADGES & TAGS
+═══════════════════════════════════════ */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-ui);
+}
+
+.badge-critical { background: var(--red-bg);    color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+.badge-high     { background: var(--orange-bg);  color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
+.badge-medium   { background: var(--yellow-bg);  color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+.badge-low      { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.25); }
+.badge-info     { background: var(--blue-bg);   color: #7dd3fc; border: 1px solid rgba(56,189,248,0.25); }
+.badge-success  { background: var(--green-bg);  color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+.badge-accent   { background: var(--accent-glow); color: var(--accent-hover); border: 1px solid rgba(99,102,241,0.3); }
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-family: var(--font-ui);
+}
+.tag-accent { background: var(--accent-glow); border-color: rgba(99,102,241,0.35); color: var(--accent-hover); }
+.tag-mono { font-family: var(--font-mono); font-size: 10.5px; }
+
+/* ═══════════════════════════════════════
+   5. STATUS INDICATORS
+═══════════════════════════════════════ */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-completed .status-dot { background: var(--green); }
+.status-running   .status-dot { background: var(--blue); animation: pulse 1.2s ease-in-out infinite; }
+.status-failed    .status-dot { background: var(--red); }
+.status-pending   .status-dot { background: var(--text-muted); }
+.status-warning   .status-dot { background: var(--yellow); }
+
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.85); } }
+
+/* ═══════════════════════════════════════
+   6. CARDS
+═══════════════════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  padding: 20px 22px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.card-clickable { cursor: pointer; }
+
+.card-title  { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+.card-meta   { font-size: 12px; color: var(--text-muted); line-height: 1.65; margin-bottom: 14px; }
+.card-footer { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+/* Stat box */
+.stat-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px 20px;
+  min-width: 130px;
+}
+
+.stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; font-weight: 600; }
+.stat-value { font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -0.5px; }
+.stat-sub   { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.stat-value.green  { color: var(--green); }
+.stat-value.red    { color: var(--red); }
+.stat-value.accent { color: var(--accent-hover); }
+
+.stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* ═══════════════════════════════════════
+   7. FORMS
+═══════════════════════════════════════ */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.form-control {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--font-ui);
+  width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.form-control::placeholder { color: var(--text-dim); }
+
+.form-control-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.form-error {
+  font-size: 11px;
+  color: #f87171;
+}
+
+.form-control-error {
+  border-color: rgba(239,68,68,0.5);
+}
+.form-control-error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+
+select.form-control {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+textarea.form-control { resize: vertical; min-height: 80px; }
+
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.checkbox-row input[type=checkbox] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════
+   8. TABLES
+═══════════════════════════════════════ */
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.data-table th {
+  text-align: left;
+  padding: 10px 14px;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  background: var(--surface2);
+}
+
+table.data-table th.sortable { cursor: pointer; user-select: none; }
+table.data-table th.sortable:hover { color: var(--text); }
+
+table.data-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+table.data-table tr:last-child td { border-bottom: none; }
+table.data-table tr:hover td { background: var(--surface2); }
+table.data-table tr.clickable { cursor: pointer; }
+
+table.data-table .cell-mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════
+   9. SCORE BARS
+═══════════════════════════════════════ */
+.score-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s cubic-bezier(.4,0,.2,1);
+}
+
+.score-fill.high   { background: var(--green); }
+.score-fill.mid    { background: var(--yellow); }
+.score-fill.low    { background: var(--red); }
+.score-fill.accent { background: var(--accent-hover); }
+
+.score-num {
+  min-width: 38px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════
+   10. TABS
+═══════════════════════════════════════ */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
+}
+
+.tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  user-select: none;
+}
+
+.tab:hover { color: var(--text); background: var(--surface2); }
+.tab.active { color: var(--accent-hover); border-bottom-color: var(--accent); }
+
+/* ═══════════════════════════════════════
+   11. NAVIGATION
+═══════════════════════════════════════ */
+/* -- Header -- */
+.header-demo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.logo-demo {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+}
+.logo-demo span { color: var(--text-muted); font-weight: 400; }
+
+.breadcrumb-demo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+.breadcrumb-demo .sep { color: var(--border); }
+.breadcrumb-demo a { color: var(--accent-hover); text-decoration: none; }
+.breadcrumb-demo a:hover { text-decoration: underline; }
+.breadcrumb-demo .current { color: var(--text); }
+
+.spacer { flex: 1; }
+
+.api-link-demo {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--r-md);
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.api-link-demo:hover { border-color: var(--accent); color: var(--accent-hover); }
+
+/* -- Sidebar -- */
+.sidebar-demo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 16px 0;
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.sidebar-section-demo { padding: 0 12px; margin-bottom: 18px; }
+.sidebar-label-demo {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-dim);
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+.sidebar-item-demo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: all 0.1s;
+}
+.sidebar-item-demo:hover { background: var(--surface2); color: var(--text); }
+.sidebar-item-demo.active { background: var(--accent); color: #fff; }
+.sidebar-item-demo .si-icon { width: 16px; text-align: center; font-size: 13px; }
+
+/* ═══════════════════════════════════════
+   12. MODALS
+═══════════════════════════════════════ */
+.modal-demo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  padding: 22px 24px;
+  max-width: 380px;
+}
+
+.modal-demo.danger { border-top: 3px solid var(--red); }
+
+.modal-title-demo { font-weight: 600; font-size: 16px; margin-bottom: 8px; }
+.modal-hint-demo  { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+.modal-actions-demo { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+/* ═══════════════════════════════════════
+   13. FEEDBACK — empty, error, spinner
+═══════════════════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-muted);
+}
+.empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; }
+.empty-state .empty-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+.empty-state .empty-body  { font-size: 13px; }
+
+.error-banner {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  color: #f87171;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.info-banner {
+  background: rgba(56,189,248,0.08);
+  border: 1px solid rgba(56,189,248,0.22);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  color: #7dd3fc;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.success-banner {
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.22);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  color: #4ade80;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner-lg {
+  width: 28px; height: 28px;
+  border-width: 3px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════
+   14. LANGUAGE BAR
+═══════════════════════════════════════ */
+.lang-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.lang-segment { height: 100%; }
+
+.lang-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.lang-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ═══════════════════════════════════════
+   15. ADMIN FORM
+═══════════════════════════════════════ */
+.admin-form {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 22px;
+}
+
+.admin-form .form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+/* ═══════════════════════════════════════
+   HERO INTRO
+═══════════════════════════════════════ */
+.kit-hero {
+  padding: 56px 0 48px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 60px;
+}
+
+.kit-hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.kit-hero-title {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 14px;
+}
+
+.kit-hero-title span { color: var(--accent-hover); }
+
+.kit-hero-sub {
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 520px;
+  line-height: 1.7;
+  margin-bottom: 28px;
+}
+
+.kit-token-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kit-token-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 4px 12px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════
+   SEPARATOR UTILITY
+═══════════════════════════════════════ */
+.sep-h {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 24px 0;
+}
+
+/* ═══════════════════════════════════════
+   ACTIVE NAV TRACKING
+═══════════════════════════════════════ */
+@media (max-width: 860px) {
+  .kit-nav { display: none; }
+  .kit-content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ──────────────────── SIDE NAV ──────────────────── -->
+<nav class="kit-nav">
+  <div class="kit-nav-brand">
+    <div class="logo-text">Code<span>Radar</span></div>
+    <div class="kit-label">UI Kit v1.0</div>
+  </div>
+
+  <div class="kit-nav-section">
+    <div class="kit-nav-section-label">Foundations</div>
+    <a class="kit-nav-link" href="#colors">Colors</a>
+    <a class="kit-nav-link" href="#typography">Typography</a>
+    <a class="kit-nav-link" href="#spacing">Spacing &amp; Radius</a>
+  </div>
+
+  <div class="kit-nav-section">
+    <div class="kit-nav-section-label">Components</div>
+    <a class="kit-nav-link" href="#buttons">Buttons</a>
+    <a class="kit-nav-link" href="#badges">Badges &amp; Tags</a>
+    <a class="kit-nav-link" href="#status">Status Indicators</a>
+    <a class="kit-nav-link" href="#cards">Cards &amp; Stats</a>
+    <a class="kit-nav-link" href="#forms">Forms &amp; Inputs</a>
+    <a class="kit-nav-link" href="#tables">Tables</a>
+    <a class="kit-nav-link" href="#scores">Score Bars</a>
+    <a class="kit-nav-link" href="#tabs">Tabs</a>
+  </div>
+
+  <div class="kit-nav-section">
+    <div class="kit-nav-section-label">Patterns</div>
+    <a class="kit-nav-link" href="#navigation">Navigation</a>
+    <a class="kit-nav-link" href="#modals">Modals</a>
+    <a class="kit-nav-link" href="#feedback">Feedback States</a>
+    <a class="kit-nav-link" href="#language-bar">Language Bar</a>
+    <a class="kit-nav-link" href="#admin-form">Admin Form</a>
+  </div>
+</nav>
+
+<!-- ──────────────────── CONTENT ──────────────────── -->
+<div class="kit-content">
+
+  <!-- HERO -->
+  <div class="kit-hero">
+    <div class="kit-hero-eyebrow">// design system</div>
+    <h1 class="kit-hero-title">Code<span>Radar</span><br>UI Kit</h1>
+    <p class="kit-hero-sub">A complete reference of every visual component, pattern, and design token used in the CodeRadar developer analytics platform.</p>
+    <div class="kit-token-pills">
+      <span class="kit-token-pill">Dark theme</span>
+      <span class="kit-token-pill">DM Sans + JetBrains Mono</span>
+      <span class="kit-token-pill">Indigo accent</span>
+      <span class="kit-token-pill">CSS custom properties</span>
+    </div>
+  </div>
+
+
+  <!-- ══════════════ 1. COLORS ══════════════ -->
+  <section class="kit-section" id="colors">
+    <div class="kit-section-header">
+      <span class="kit-section-number">01</span>
+      <h2 class="kit-section-title">Colors</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Background & Surface</div>
+      <div class="color-grid">
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#0f1117"></div>
+          <div class="color-info"><div class="color-name">Background</div><div class="color-var">--bg · #0f1117</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#1a1d27"></div>
+          <div class="color-info"><div class="color-name">Surface</div><div class="color-var">--surface · #1a1d27</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#22263a"></div>
+          <div class="color-info"><div class="color-name">Surface 2</div><div class="color-var">--surface2 · #22263a</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#2e3350"></div>
+          <div class="color-info"><div class="color-name">Border</div><div class="color-var">--border · #2e3350</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Accent</div>
+      <div class="color-grid">
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#6366f1"></div>
+          <div class="color-info"><div class="color-name">Accent</div><div class="color-var">--accent · #6366f1</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#818cf8"></div>
+          <div class="color-info"><div class="color-name">Accent Hover</div><div class="color-var">--accent-hover · #818cf8</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:rgba(99,102,241,0.18)"></div>
+          <div class="color-info"><div class="color-name">Accent Glow</div><div class="color-var">--accent-glow · 18% opacity</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Text</div>
+      <div class="color-grid">
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#e2e8f0"></div>
+          <div class="color-info" style="background:var(--bg)"><div class="color-name">Text</div><div class="color-var">--text · #e2e8f0</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#64748b"></div>
+          <div class="color-info"><div class="color-name">Text Muted</div><div class="color-var">--text-muted · #64748b</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#475569"></div>
+          <div class="color-info"><div class="color-name">Text Dim</div><div class="color-var">--text-dim · #475569</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Semantic</div>
+      <div class="color-grid">
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#22c55e"></div>
+          <div class="color-info"><div class="color-name">Green / Success</div><div class="color-var">--green · #22c55e</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#f59e0b"></div>
+          <div class="color-info"><div class="color-name">Yellow / Warning</div><div class="color-var">--yellow · #f59e0b</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#ef4444"></div>
+          <div class="color-info"><div class="color-name">Red / Danger</div><div class="color-var">--red · #ef4444</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#f97316"></div>
+          <div class="color-info"><div class="color-name">Orange / High</div><div class="color-var">--orange · #f97316</div></div>
+        </div>
+        <div class="color-chip">
+          <div class="color-swatch" style="background:#38bdf8"></div>
+          <div class="color-info"><div class="color-name">Blue / Info</div><div class="color-var">--blue · #38bdf8</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 2. TYPOGRAPHY ══════════════ -->
+  <section class="kit-section" id="typography">
+    <div class="kit-section-header">
+      <span class="kit-section-number">02</span>
+      <h2 class="kit-section-title">Typography</h2>
+    </div>
+
+    <div class="demo-box">
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Display</span>
+          <span class="type-tag">700</span>
+          <span class="type-tag">36px</span>
+          <span class="type-tag">DM Sans</span>
+        </div>
+        <div class="t-display">CodeRadar Analytics</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">H1 / Page Title</span>
+          <span class="type-tag">700</span>
+          <span class="type-tag">22px</span>
+        </div>
+        <div class="t-h1">Projects Overview</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">H2 / Section Title</span>
+          <span class="type-tag">600</span>
+          <span class="type-tag">15px</span>
+        </div>
+        <div class="t-h2">Repository Statistics</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Body</span>
+          <span class="type-tag">400</span>
+          <span class="type-tag">14px / 1.7</span>
+        </div>
+        <div class="t-body">CodeRadar scans your repositories for code quality, security risks, and developer activity — providing actionable insights across your entire codebase.</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Small / Muted</span>
+          <span class="type-tag">400</span>
+          <span class="type-tag">13px</span>
+        </div>
+        <div class="t-small">Last scanned 3 hours ago · 142,890 lines of code</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Label / Uppercase</span>
+          <span class="type-tag">600</span>
+          <span class="type-tag">11px</span>
+        </div>
+        <div class="t-label">Repositories</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Monospace</span>
+          <span class="type-tag">JetBrains Mono</span>
+          <span class="type-tag">12px</span>
+        </div>
+        <div class="t-mono">a3f2d9c · feat: add treemap analytics view</div>
+      </div>
+
+      <div class="type-specimen">
+        <div class="type-meta">
+          <span class="type-tag">Caption</span>
+          <span class="type-tag">400</span>
+          <span class="type-tag">11px</span>
+        </div>
+        <div class="t-caption">Updated Jan 14, 2025</div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 3. SPACING & RADIUS ══════════════ -->
+  <section class="kit-section" id="spacing">
+    <div class="kit-section-header">
+      <span class="kit-section-number">03</span>
+      <h2 class="kit-section-title">Spacing &amp; Radius</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Border Radius</div>
+      <div class="demo-row" style="align-items:flex-end;">
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:6px;margin:0 auto 8px;"></div>
+          <div class="code-label">6px · --r-sm</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:8px;margin:0 auto 8px;"></div>
+          <div class="code-label">8px · --r-md</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:10px;margin:0 auto 8px;"></div>
+          <div class="code-label">10px · --r-lg</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:12px;margin:0 auto 8px;"></div>
+          <div class="code-label">12px · --r-xl</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:16px;margin:0 auto 8px;"></div>
+          <div class="code-label">16px · --r-2xl</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:100px;margin:0 auto 8px;"></div>
+          <div class="code-label">Full · pill</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Spacing Scale</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:4px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">4px — Micro gap (icon to text)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:8px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">8px — Small gap (badges, tight rows)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:12px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">12px — Default gap (cards grid, form rows)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:16px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">16px — Section gap</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:24px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">24px — Page margin-bottom</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:32px;height:20px;background:var(--accent);border-radius:2px;"></div>
+          <span class="t-caption">32px — Content padding</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 4. BUTTONS ══════════════ -->
+  <section class="kit-section" id="buttons">
+    <div class="kit-section-header">
+      <span class="kit-section-number">04</span>
+      <h2 class="kit-section-title">Buttons</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Variants</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <button class="btn btn-primary">Primary</button>
+          <button class="btn btn-outline">Outline</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-danger">Danger</button>
+          <button class="btn btn-success">Success</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Sizes</div>
+      <div class="demo-box">
+        <div class="demo-row" style="align-items:center;">
+          <button class="btn btn-primary btn-sm">Small</button>
+          <button class="btn btn-primary">Default</button>
+          <button class="btn btn-primary btn-lg">Large</button>
+          <button class="btn btn-outline btn-icon">⚙</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">States</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <button class="btn btn-primary" disabled>Disabled Primary</button>
+          <button class="btn btn-outline" disabled>Disabled Outline</button>
+          <button class="btn btn-primary">
+            <span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading…
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">With Icons</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <button class="btn btn-primary">📁 New Project</button>
+          <button class="btn btn-outline">🔍 Run Scan</button>
+          <button class="btn btn-danger">🗑 Delete</button>
+          <button class="btn btn-outline">API Docs ↗</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 5. BADGES & TAGS ══════════════ -->
+  <section class="kit-section" id="badges">
+    <div class="kit-section-header">
+      <span class="kit-section-number">05</span>
+      <h2 class="kit-section-title">Badges &amp; Tags</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Severity Badges</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <span class="badge badge-critical">Critical</span>
+          <span class="badge badge-high">High</span>
+          <span class="badge badge-medium">Medium</span>
+          <span class="badge badge-low">Low</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Semantic Badges</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <span class="badge badge-success">Success</span>
+          <span class="badge badge-info">Info</span>
+          <span class="badge badge-accent">Active</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Tags</div>
+      <div class="demo-box">
+        <div class="demo-row">
+          <span class="tag">backend</span>
+          <span class="tag">legacy</span>
+          <span class="tag tag-accent">View repos →</span>
+          <span class="tag tag-mono">a3f2d9c</span>
+          <span class="tag">python</span>
+          <span class="tag">microservice</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 6. STATUS ══════════════ -->
+  <section class="kit-section" id="status">
+    <div class="kit-section-header">
+      <span class="kit-section-number">06</span>
+      <h2 class="kit-section-title">Status Indicators</h2>
+    </div>
+
+    <div class="demo-box">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="status status-completed">
+          <div class="status-dot"></div>Completed
+        </div>
+        <div class="status status-running">
+          <div class="status-dot"></div>Running
+        </div>
+        <div class="status status-pending">
+          <div class="status-dot"></div>Pending
+        </div>
+        <div class="status status-failed">
+          <div class="status-dot"></div>Failed
+        </div>
+        <div class="status status-warning">
+          <div class="status-dot"></div>Warning
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 7. CARDS ══════════════ -->
+  <section class="kit-section" id="cards">
+    <div class="kit-section-header">
+      <span class="kit-section-number">07</span>
+      <h2 class="kit-section-title">Cards &amp; Stat Boxes</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Project Card</div>
+      <div class="card-grid" style="max-width:600px">
+        <div class="card card-clickable">
+          <div class="card-title">api-gateway</div>
+          <div class="card-meta">
+            3 repositories · Last scan 2h ago<br>
+            142,890 LOC · 1,204 files
+          </div>
+          <div class="card-footer">
+            <span class="tag">backend</span>
+            <span class="tag">python</span>
+            <span class="tag tag-accent">View repos →</span>
+          </div>
+        </div>
+        <div class="card card-clickable">
+          <div class="card-title">frontend-monorepo</div>
+          <div class="card-meta">
+            5 repositories · Last scan 6h ago<br>
+            98,250 LOC · 892 files
+          </div>
+          <div class="card-footer">
+            <span class="tag">typescript</span>
+            <span class="tag">react</span>
+            <span class="tag tag-accent">View repos →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Stat Boxes</div>
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-label">Total Projects</div>
+          <div class="stat-value">12</div>
+          <div class="stat-sub">3 with active scans</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Lines of Code</div>
+          <div class="stat-value accent">1.2M</div>
+          <div class="stat-sub">+8.4% last month</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Avg Score</div>
+          <div class="stat-value green">84</div>
+          <div class="stat-sub">out of 100</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Open Risks</div>
+          <div class="stat-value red">7</div>
+          <div class="stat-sub">2 critical</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 8. FORMS ══════════════ -->
+  <section class="kit-section" id="forms">
+    <div class="kit-section-header">
+      <span class="kit-section-number">08</span>
+      <h2 class="kit-section-title">Forms &amp; Inputs</h2>
+    </div>
+
+    <div class="demo-box" style="max-width:540px">
+      <div class="form-field">
+        <label class="form-label">Project Name</label>
+        <input type="text" class="form-control" placeholder="e.g. api-gateway">
+        <div class="form-hint">Must be unique across all projects.</div>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Description</label>
+        <textarea class="form-control" placeholder="A short description of this project…"></textarea>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Repository URL (error state)</label>
+        <input type="text" class="form-control form-control-error" value="not-a-valid-url">
+        <div class="form-error">Please enter a valid Git repository URL.</div>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Commit SHA (monospace)</label>
+        <input type="text" class="form-control form-control-mono" placeholder="a3f2d9c...">
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Default Branch</label>
+        <select class="form-control">
+          <option>main</option>
+          <option>master</option>
+          <option>develop</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label class="checkbox-row">
+          <input type="checkbox" checked>
+          Enable auto-scan on push
+        </label>
+      </div>
+
+      <div class="demo-row">
+        <button class="btn btn-primary">Save Project</button>
+        <button class="btn btn-outline">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 9. TABLES ══════════════ -->
+  <section class="kit-section" id="tables">
+    <div class="kit-section-header">
+      <span class="kit-section-number">09</span>
+      <h2 class="kit-section-title">Tables</h2>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="sortable">Project ↑</th>
+            <th>Repos</th>
+            <th>LOC</th>
+            <th>Avg Score</th>
+            <th>Last Scan</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="clickable">
+            <td>
+              <div style="font-weight:600">api-gateway</div>
+              <div class="cell-mono">id: 1</div>
+            </td>
+            <td>3</td>
+            <td>142,890</td>
+            <td>
+              <div class="score-bar-wrap">
+                <div class="score-bar"><div class="score-fill high" style="width:87%"></div></div>
+                <span class="score-num">87</span>
+              </div>
+            </td>
+            <td><span class="t-caption">2h ago</span></td>
+            <td><span class="status status-completed"><span class="status-dot"></span>Completed</span></td>
+          </tr>
+          <tr class="clickable">
+            <td>
+              <div style="font-weight:600">frontend-monorepo</div>
+              <div class="cell-mono">id: 2</div>
+            </td>
+            <td>5</td>
+            <td>98,250</td>
+            <td>
+              <div class="score-bar-wrap">
+                <div class="score-bar"><div class="score-fill mid" style="width:62%"></div></div>
+                <span class="score-num">62</span>
+              </div>
+            </td>
+            <td><span class="t-caption">6h ago</span></td>
+            <td><span class="status status-running"><span class="status-dot"></span>Running</span></td>
+          </tr>
+          <tr class="clickable">
+            <td>
+              <div style="font-weight:600">legacy-billing</div>
+              <div class="cell-mono">id: 3</div>
+            </td>
+            <td>1</td>
+            <td>34,100</td>
+            <td>
+              <div class="score-bar-wrap">
+                <div class="score-bar"><div class="score-fill low" style="width:31%"></div></div>
+                <span class="score-num">31</span>
+              </div>
+            </td>
+            <td><span class="t-caption">3d ago</span></td>
+            <td><span class="status status-failed"><span class="status-dot"></span>Failed</span></td>
+          </tr>
+          <tr class="clickable">
+            <td>
+              <div style="font-weight:600">data-pipeline</div>
+              <div class="cell-mono">id: 4</div>
+            </td>
+            <td>2</td>
+            <td>—</td>
+            <td>—</td>
+            <td><span class="t-caption">Never</span></td>
+            <td><span class="status status-pending"><span class="status-dot"></span>Pending</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 10. SCORE BARS ══════════════ -->
+  <section class="kit-section" id="scores">
+    <div class="kit-section-header">
+      <span class="kit-section-number">10</span>
+      <h2 class="kit-section-title">Score Bars</h2>
+    </div>
+
+    <div class="demo-box" style="max-width:420px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span class="t-small">Code Quality</span>
+          <span class="badge badge-success">High</span>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill high" style="width:87%"></div></div>
+          <span class="score-num" style="color:var(--green)">87</span>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span class="t-small">Test Coverage</span>
+          <span class="badge badge-medium">Medium</span>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill mid" style="width:62%"></div></div>
+          <span class="score-num" style="color:var(--yellow)">62</span>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span class="t-small">Security Score</span>
+          <span class="badge badge-critical">Low</span>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill low" style="width:28%"></div></div>
+          <span class="score-num" style="color:var(--red)">28</span>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span class="t-small">Maintainability</span>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-fill accent" style="width:74%"></div></div>
+          <span class="score-num" style="color:var(--accent-hover)">74</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 11. TABS ══════════════ -->
+  <section class="kit-section" id="tabs">
+    <div class="kit-section-header">
+      <span class="kit-section-number">11</span>
+      <h2 class="kit-section-title">Tabs</h2>
+    </div>
+
+    <div class="demo-box" style="padding-bottom:0;">
+      <div class="tabs">
+        <div class="tab active">📊 Summary</div>
+        <div class="tab">🌐 Languages</div>
+        <div class="tab">⭐ Scores</div>
+        <div class="tab">⚠️ Risks</div>
+        <div class="tab">👥 Developers</div>
+      </div>
+      <div style="padding:20px 0 4px;color:var(--text-muted);font-size:13px;">Tab panel content area</div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 12. NAVIGATION ══════════════ -->
+  <section class="kit-section" id="navigation">
+    <div class="kit-section-header">
+      <span class="kit-section-number">12</span>
+      <h2 class="kit-section-title">Navigation</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">App Header</div>
+      <div class="header-demo">
+        <div class="logo-demo">Code<span>Radar</span></div>
+        <div class="breadcrumb-demo">
+          <span class="sep">/</span>
+          <a>Projects</a>
+          <span class="sep">/</span>
+          <a>api-gateway</a>
+          <span class="sep">/</span>
+          <span class="current">Scans</span>
+        </div>
+        <div class="spacer"></div>
+        <a class="api-link-demo">API Docs ↗</a>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Sidebar</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div class="sidebar-demo">
+          <div class="sidebar-section-demo">
+            <div class="sidebar-label-demo">Navigation</div>
+            <div class="sidebar-item-demo active"><span class="si-icon">📁</span> Projects</div>
+            <div class="sidebar-item-demo"><span class="si-icon">👥</span> Developers</div>
+            <div class="sidebar-item-demo"><span class="si-icon">📈</span> Analytics</div>
+            <div class="sidebar-item-demo"><span class="si-icon">🔐</span> Personal Data</div>
+            <div class="sidebar-item-demo"><span class="si-icon">🗺</span> Tech Map</div>
+          </div>
+          <div class="sidebar-section-demo">
+            <div class="sidebar-label-demo">Admin</div>
+            <div class="sidebar-item-demo"><span class="si-icon">⚙</span> Projects</div>
+            <div class="sidebar-item-demo"><span class="si-icon">⚙</span> Repositories</div>
+            <div class="sidebar-item-demo"><span class="si-icon">⚙</span> Developers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 13. MODALS ══════════════ -->
+  <section class="kit-section" id="modals">
+    <div class="kit-section-header">
+      <span class="kit-section-number">13</span>
+      <h2 class="kit-section-title">Modals</h2>
+    </div>
+
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+      <div class="modal-demo">
+        <div class="modal-title-demo">Edit Tags</div>
+        <div class="modal-hint-demo">Enter tags separated by commas.</div>
+        <input type="text" class="form-control" placeholder="e.g. backend, legacy" style="margin-bottom:16px;">
+        <div class="modal-actions-demo">
+          <button class="btn btn-outline btn-sm">Cancel</button>
+          <button class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </div>
+
+      <div class="modal-demo danger">
+        <div class="modal-title-demo">Delete Repository</div>
+        <div class="modal-hint-demo">This action is irreversible. All scan data for this repository will be permanently deleted.</div>
+        <div class="modal-actions-demo">
+          <button class="btn btn-outline btn-sm">Cancel</button>
+          <button class="btn btn-danger btn-sm">Delete</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 14. FEEDBACK STATES ══════════════ -->
+  <section class="kit-section" id="feedback">
+    <div class="kit-section-header">
+      <span class="kit-section-number">14</span>
+      <h2 class="kit-section-title">Feedback States</h2>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Banners</div>
+      <div style="display:flex;flex-direction:column;gap:12px;max-width:560px;">
+        <div class="error-banner">
+          <span>⚠</span>
+          <span>Failed to connect to repository. Please check the URL and access credentials.</span>
+        </div>
+        <div class="info-banner">
+          <span>ℹ</span>
+          <span>Scan is queued and will start shortly. This may take a few minutes for large repositories.</span>
+        </div>
+        <div class="success-banner">
+          <span>✓</span>
+          <span>Scan completed successfully. 142,890 lines of code analysed.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Empty State</div>
+      <div class="demo-box">
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-title">No projects yet</div>
+          <div class="empty-body">Add a project via the API or import from your VCS.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kit-subsection">
+      <div class="kit-subsection-title">Loading Spinners</div>
+      <div class="demo-box">
+        <div class="demo-row" style="align-items:center;">
+          <span class="spinner"></span>
+          <span class="spinner spinner-lg"></span>
+          <button class="btn btn-primary">
+            <span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Scanning…
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 15. LANGUAGE BAR ══════════════ -->
+  <section class="kit-section" id="language-bar">
+    <div class="kit-section-header">
+      <span class="kit-section-number">15</span>
+      <h2 class="kit-section-title">Language Bar</h2>
+    </div>
+
+    <div class="demo-box" style="max-width:520px;">
+      <div class="t-label" style="margin-bottom:10px;">Language Breakdown</div>
+      <div class="lang-bar">
+        <div class="lang-segment" style="width:42%;background:#3b82f6;"></div>
+        <div class="lang-segment" style="width:28%;background:#f59e0b;"></div>
+        <div class="lang-segment" style="width:14%;background:#22c55e;"></div>
+        <div class="lang-segment" style="width:9%;background:#a78bfa;"></div>
+        <div class="lang-segment" style="width:7%;background:#64748b;"></div>
+      </div>
+      <div class="lang-legend">
+        <span><span class="lang-dot" style="background:#3b82f6;"></span>Python 42%</span>
+        <span><span class="lang-dot" style="background:#f59e0b;"></span>TypeScript 28%</span>
+        <span><span class="lang-dot" style="background:#22c55e;"></span>Go 14%</span>
+        <span><span class="lang-dot" style="background:#a78bfa;"></span>SQL 9%</span>
+        <span><span class="lang-dot" style="background:#64748b;"></span>Other 7%</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════ 16. ADMIN FORM ══════════════ -->
+  <section class="kit-section" id="admin-form">
+    <div class="kit-section-header">
+      <span class="kit-section-number">16</span>
+      <h2 class="kit-section-title">Admin Form Panel</h2>
+    </div>
+
+    <div class="admin-form" style="max-width:600px;">
+      <div class="form-row">
+        <div class="form-field" style="flex:2;">
+          <label class="form-label">Repository URL</label>
+          <input type="text" class="form-control" placeholder="https://github.com/org/repo.git">
+        </div>
+        <div class="form-field" style="flex:1;">
+          <label class="form-label">Branch</label>
+          <input type="text" class="form-control" placeholder="main">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label">Project</label>
+          <select class="form-control">
+            <option>api-gateway</option>
+            <option>frontend-monorepo</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Scan Mode</label>
+          <select class="form-control">
+            <option>Full</option>
+            <option>Incremental</option>
+          </select>
+        </div>
+      </div>
+      <div class="demo-row">
+        <button class="btn btn-primary btn-sm">Add Repository</button>
+        <button class="btn btn-outline btn-sm">Reset</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// Highlight active nav link on scroll
+const links = document.querySelectorAll('.kit-nav-link');
+const sections = document.querySelectorAll('.kit-section');
+
+function setActive() {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 80) current = s.id;
+  });
+  links.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+}
+
+window.addEventListener('scroll', setActive, { passive: true });
+setActive();
+
+// Animate score bars on load
+window.addEventListener('load', () => {
+  const fills = document.querySelectorAll('.score-fill');
+  fills.forEach(f => {
+    const w = f.style.width;
+    f.style.width = '0';
+    requestAnimationFrame(() => { f.style.width = w; });
+  });
+});
+</script>
+</body>
+</html>
