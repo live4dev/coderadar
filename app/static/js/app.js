@@ -12,7 +12,7 @@ import { renderScans, triggerScan, showRepoTab } from './views/scans.js';
 import { renderScanDetail } from './views/scan-detail.js';
 import { renderDevelopersSummary, devSort, devSearchInput } from './views/developers.js';
 import { renderDeveloperProfile } from './views/developer-profile.js';
-import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance } from './views/analytics.js';
+import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance, activityMetricChange, activityPeriodChange, disposeActivityTree, activityTreeChartInstance } from './views/analytics.js';
 import { renderPersonalDataReport } from './views/personal-data-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
 import { renderScansQueue, cancelScan, stopQueueRefresh } from './views/scans-queue.js';
@@ -20,6 +20,7 @@ import { setMain, showError } from './utils.js';
 
 async function render() {
   disposeTreemap();
+  disposeActivityTree();
   stopQueueRefresh();
   updateNav();
   setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
@@ -54,6 +55,8 @@ window.repoSearchInput = repoSearchInput;
 window.devSort = devSort;
 window.devSearchInput = devSearchInput;
 window.treemapMetricChange = treemapMetricChange;
+window.activityMetricChange = activityMetricChange;
+window.activityPeriodChange = activityPeriodChange;
 window.techMapProjectChange = techMapProjectChange;
 window.triggerScan = triggerScan;
 window.showRepoTab = showRepoTab;
@@ -93,4 +96,5 @@ window.addEventListener('popstate', () => {
 
 window.addEventListener('resize', () => {
   if (treemapChartInstance) treemapChartInstance.resize();
+  if (activityTreeChartInstance) activityTreeChartInstance.resize();
 });

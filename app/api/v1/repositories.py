@@ -109,6 +109,10 @@ def update_repository(repo_id: int, body: RepositoryUpdate, db: Session = Depend
         provider = ProviderType(body.provider_type)
     except ValueError:
         raise HTTPException(400, f"Unknown provider_type: {body.provider_type!r}. Use 'bitbucket', 'gitlab', or 'github'.")
+    if body.project_id is not None and body.project_id != repo.project_id:
+        if not db.get(Project, body.project_id):
+            raise HTTPException(404, "Project not found")
+        repo.project_id = body.project_id
     repo.name = body.name
     repo.url = body.url
     repo.provider_type = provider

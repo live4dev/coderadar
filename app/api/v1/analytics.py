@@ -1,12 +1,15 @@
 """Analytics API: treemap tree and similar."""
 import json
 from collections import defaultdict
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Project, Repository, Scan, ScanStatus
+from app.models import Project, Repository, Scan, ScanStatus, RepositoryDailyActivity
+from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
 
@@ -120,6 +123,93 @@ def get_treemap(
         type="root",
         children=project_nodes,
     )
+
+
+@router.get("/activity-tree", response_model=TreemapNode)
+def get_activity_tree(
+    metric: str = Query("commits", description="Activity metric: commits or lines"),
+    period: str = Query("1y", description="Time window: 1m, 3m, 6m, 1y"),
+    db: Session = Depends(get_db),
+):
+    """Return a tree for activity map: root -> projects -> repositories (value = commit count or lines added)."""
+    if metric not in ("commits", "lines"):
+        raise HTTPException(400, "metric must be commits or lines")
+    if period not in ("1m", "3m", "6m", "1y"):
+        raise HTTPException(400, "period must be 1m, 3m, 6m or 1y")
+
+    projects = db.query(Project).order_by(Project.id).all()
+    if not projects:
+        return TreemapNode(name="root", value=0, type="root", children=[])
+
+    repo_ids: list[int] = []
+    for p in projects:
+        repos = db.query(Repository).filter_by(project_id=p.id).all()
+        for r in repos:
+            repo_ids.append(r.id)
+
+    if metric == "commits":
+        period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+        cutoff = date.today() - timedelta(days=period_days[period])
+        rows = (
+            db.query(
+                RepositoryDailyActivity.repository_id,
+                func.sum(RepositoryDailyActivity.commit_count).label("total"),
+            )
+            .filter(
+                RepositoryDailyActivity.repository_id.in_(repo_ids),
+                RepositoryDailyActivity.commit_date >= cutoff,
+            )
+            .group_by(RepositoryDailyActivity.repository_id)
+            .all()
+        )
+        repo_activity: dict[int, int] = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
+    else:
+        scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+        if not scan_by_repo:
+            return TreemapNode(name="root", value=0, type="root", children=[])
+        scan_ids = {scan.id for scan in scan_by_repo.values()}
+        rows = (
+            db.query(
+                Scan.repository_id,
+                func.sum(DeveloperContribution.insertions).label("total"),
+            )
+            .join(DeveloperContribution, DeveloperContribution.scan_id == Scan.id)
+            .filter(Scan.id.in_(list(scan_ids)))
+            .group_by(Scan.repository_id)
+            .all()
+        )
+        repo_activity = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
+
+    repos_q = (
+        db.query(Repository.id, Repository.name, Repository.project_id)
+        .filter(Repository.id.in_(repo_ids))
+        .all()
+    )
+    proj_repo_nodes: dict[int, list[TreemapNode]] = {p.id: [] for p in projects}
+    proj_values: dict[int, int] = {p.id: 0 for p in projects}
+
+    for r in repos_q:
+        val = repo_activity.get(r.id, 0)
+        if val == 0:
+            continue
+        proj_repo_nodes[r.project_id].append(
+            TreemapNode(name=r.name, value=val, id=r.id, type="repository", children=None)
+        )
+        proj_values[r.project_id] += val
+
+    root_value = 0
+    project_nodes: list[TreemapNode] = []
+    for p in projects:
+        repo_nodes = proj_repo_nodes[p.id]
+        pval = proj_values[p.id]
+        if not repo_nodes:
+            continue
+        root_value += pval
+        project_nodes.append(
+            TreemapNode(name=p.name, value=pval, id=p.id, type="project", children=repo_nodes)
+        )
+
+    return TreemapNode(name="root", value=root_value, type="root", children=project_nodes)
 
 
 @router.get("/tech-map", response_model=TechMapResponse)
