@@ -111,6 +111,7 @@ export async function renderAnalytics() {
           data: root.children || [],
           roam: false,
           nodeClick: 'zoomToNode',
+          upperLabel: {show: true},
           breadcrumb: { show: true, itemStyle: { color: '#22263a' }, textStyle: { color: '#64748b' } },
           label: { show: true, formatter: function(info) { return info.name; } },
           itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
@@ -150,6 +151,7 @@ export async function renderAnalytics() {
       breadcrumb: { show: true, itemStyle: { color: '#22263a' }, textStyle: { color: '#64748b' } },
       label: { show: true, formatter: (info) => info.name },
       itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
+      upperLabel: {show: true},
       levels: [
         { itemStyle: { borderColor: '#2e3350', borderWidth: 2 }, upperLabel: { show: true, fontSize: 12, color: '#94a3b8', padding: [4, 8] } },
         { itemStyle: { borderColor: '#2e3350', borderWidth: 1 } },
