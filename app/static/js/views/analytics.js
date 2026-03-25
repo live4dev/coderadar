@@ -103,20 +103,20 @@ export async function renderAnalytics() {
           const v = info.value;
           const pct = root.value ? ((v / root.value) * 100).toFixed(1) : 0;
           const path = info.treePathInfo || [];
-          const displayName = path.length >= 3 ? path[1].name + ' / ' + info.name : info.name;
+          const displayName = path.length >= 2 ? path[0].name + ' / ' + info.name : info.name;
           return displayName + '<br/>' + (stateTreemapMetric === 'loc' ? 'LOC' : 'Files') + ': ' + fmt(v) + ' (' + pct + '%)';
         }},
         series: [{
           type: 'treemap',
-          data: [root],
+          data: root.children || [],
           roam: false,
           nodeClick: 'zoomToNode',
           breadcrumb: { show: true, itemStyle: { color: '#22263a' }, textStyle: { color: '#64748b' } },
           label: { show: true, formatter: function(info) { return info.name; } },
           itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
           levels: [
-            { itemStyle: { borderColor: '#2e3350' }, upperLabel: { show: true } },
-            { itemStyle: { borderColor: '#2e3350' } },
+            { itemStyle: { borderColor: '#2e3350', borderWidth: 2 }, upperLabel: { show: true, fontSize: 12, color: '#94a3b8', padding: [4, 8] } },
+            { itemStyle: { borderColor: '#2e3350', borderWidth: 1 } },
           ],
         }],
       });
@@ -137,12 +137,12 @@ export async function renderAnalytics() {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item', formatter: (info) => {
       const path = info.treePathInfo || [];
-      const displayName = path.length >= 3 ? path[1].name + ' / ' + info.name : info.name;
+      const displayName = path.length >= 2 ? path[0].name + ' / ' + info.name : info.name;
       return `${displayName}<br/>${actLabel}: ${fmt(info.value)}`;
     }},
     series: [{
       type: 'treemap',
-      data: [activityRoot],
+      data: activityRoot.children || [],
       roam: false,
       nodeClick: 'zoomToNode',
       colorMappingBy: 'value',
@@ -151,8 +151,8 @@ export async function renderAnalytics() {
       label: { show: true, formatter: (info) => info.name },
       itemStyle: { borderColor: '#2e3350', borderWidth: 1 },
       levels: [
-        { itemStyle: { borderColor: '#2e3350' }, upperLabel: { show: true } },
-        { itemStyle: { borderColor: '#2e3350' } },
+        { itemStyle: { borderColor: '#2e3350', borderWidth: 2 }, upperLabel: { show: true, fontSize: 12, color: '#94a3b8', padding: [4, 8] } },
+        { itemStyle: { borderColor: '#2e3350', borderWidth: 1 } },
       ],
     }],
   });
