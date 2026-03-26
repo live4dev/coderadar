@@ -1,7 +1,8 @@
 """Analytics API: treemap tree and similar."""
 import json
+from calendar import monthrange
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -11,7 +12,7 @@ from app.db.session import get_db
 from app.models import Project, Repository, Scan, ScanStatus, RepositoryDailyActivity
 from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
-from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat
+from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat, SizeHistoryRepo, SizeHistoryResponse
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -321,3 +322,95 @@ def get_tech_map(
             infra_tools=dict(sorted(infra_counts.items(), key=lambda x: -x[1])),
         ),
     )
+
+
+@router.get("/size-history", response_model=SizeHistoryResponse)
+def get_size_history(
+    metric: str = Query("loc", description="Size metric: loc, files, or bytes"),
+    db: Session = Depends(get_db),
+):
+    """Return monthly codebase size for the last 5 years, one value per repo per month."""
+    if metric not in ("loc", "files", "bytes"):
+        raise HTTPException(400, "metric must be loc, files, or bytes")
+
+    # Generate 60 monthly slots (5 years back to current month inclusive)
+    today = date.today()
+    months: list[str] = []
+    month_ends: list[date] = []
+    y, m = today.year, today.month
+    for _ in range(60):
+        last_day = monthrange(y, m)[1]
+        months.append(f"{y:04d}-{m:02d}")
+        month_ends.append(date(y, m, last_day))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+    month_ends.reverse()
+
+    # Load all completed scans with their metric values
+    rows = (
+        db.query(
+            Scan.id,
+            Scan.repository_id,
+            Scan.created_at,
+            Scan.total_loc,
+            Scan.total_files,
+            Scan.size_bytes,
+        )
+        .filter(Scan.status == ScanStatus.completed)
+        .order_by(Scan.repository_id, Scan.created_at)
+        .all()
+    )
+
+    # Group scans by repo, sorted by created_at (already ordered)
+    repo_scans: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    for row in rows:
+        created = row.created_at.date() if isinstance(row.created_at, datetime) else row.created_at
+        val = 0
+        if metric == "loc":
+            val = row.total_loc or 0
+        elif metric == "files":
+            val = row.total_files or 0
+        else:
+            val = row.size_bytes or 0
+        repo_scans[row.repository_id].append((created, val))
+
+    if not repo_scans:
+        return SizeHistoryResponse(
+            months=months,
+            repos=[],
+            totals=[0] * len(months),
+        )
+
+    # Load repo names
+    repo_ids = list(repo_scans.keys())
+    repo_names: dict[int, str] = {
+        r.id: r.name
+        for r in db.query(Repository.id, Repository.name).filter(Repository.id.in_(repo_ids)).all()
+    }
+
+    # For each repo × month slot: find latest scan value at or before month end
+    result_repos: list[SizeHistoryRepo] = []
+    totals = [0] * len(months)
+
+    for repo_id, scans in sorted(repo_scans.items(), key=lambda x: x[0]):
+        values: list[int | None] = []
+        for i, end_date in enumerate(month_ends):
+            # Find latest scan at or before end_date
+            val = None
+            for scan_date, scan_val in reversed(scans):
+                if scan_date <= end_date:
+                    val = scan_val
+                    break
+            values.append(val)
+            if val is not None:
+                totals[i] += val
+        result_repos.append(SizeHistoryRepo(
+            id=repo_id,
+            name=repo_names.get(repo_id, str(repo_id)),
+            values=values,
+        ))
+
+    return SizeHistoryResponse(months=months, repos=result_repos, totals=totals)

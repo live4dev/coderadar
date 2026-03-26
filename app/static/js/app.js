@@ -10,10 +10,11 @@ import { renderProjects, projSort, projSearchInput } from './views/projects.js';
 import { renderRepos, repoSort, repoSearchInput } from './views/repos.js';
 import { renderScans, triggerScan, showRepoTab } from './views/scans.js';
 import { renderScanDetail } from './views/scan-detail.js';
-import { renderDevelopersSummary, devSort, devSearchInput } from './views/developers.js';
+import { renderDevelopersSummary, devSort, devSearchInput, devTagToggle } from './views/developers.js';
 import { renderDeveloperProfile } from './views/developer-profile.js';
-import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance, activityMetricChange, activityPeriodChange, disposeActivityTree, activityTreeChartInstance } from './views/analytics.js';
+import { renderAnalytics, treemapMetricChange, disposeTreemap, treemapChartInstance, activityMetricChange, activityPeriodChange, disposeActivityTree, activityTreeChartInstance, sizeMetricChange, disposeSizeHistory, sizeHistoryChartInstance } from './views/analytics.js';
 import { renderPersonalDataReport } from './views/personal-data-report.js';
+import { renderLicenseReport, licenseSort } from './views/license-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
 import { renderScansQueue, cancelScan, stopQueueRefresh } from './views/scans-queue.js';
 import { setMain, showError } from './utils.js';
@@ -21,6 +22,7 @@ import { setMain, showError } from './utils.js';
 async function render() {
   disposeTreemap();
   disposeActivityTree();
+  disposeSizeHistory();
   stopQueueRefresh();
   updateNav();
   setMain('<div class="empty"><span class="spinner"></span> Loading…</div>');
@@ -33,6 +35,7 @@ async function render() {
     else if (state.view === 'developer')       await renderDeveloperProfile();
     else if (state.view === 'analytics')       await renderAnalytics();
     else if (state.view === 'personal-data-report') await renderPersonalDataReport();
+    else if (state.view === 'license-report')       await renderLicenseReport();
     else if (state.view === 'tech-map')            await renderTechMap();
     else if (state.view === 'admin-projects')   await renderAdminProjects();
     else if (state.view === 'admin-repos')      await renderAdminRepos();
@@ -54,10 +57,13 @@ window.repoSort = repoSort;
 window.repoSearchInput = repoSearchInput;
 window.devSort = devSort;
 window.devSearchInput = devSearchInput;
+window.devTagToggle = devTagToggle;
 window.treemapMetricChange = treemapMetricChange;
 window.activityMetricChange = activityMetricChange;
 window.activityPeriodChange = activityPeriodChange;
+window.sizeMetricChange = sizeMetricChange;
 window.techMapProjectChange = techMapProjectChange;
+window.licenseSort = licenseSort;
 window.triggerScan = triggerScan;
 window.showRepoTab = showRepoTab;
 window.cancelScan = cancelScan;
@@ -75,6 +81,7 @@ document.getElementById('nav-projects').addEventListener('click', () => navigate
 document.getElementById('nav-developers-list').addEventListener('click', () => navigate('developers'));
 document.getElementById('nav-analytics').addEventListener('click', () => navigate('analytics'));
 document.getElementById('nav-personal-data-report').addEventListener('click', () => navigate('personal-data-report'));
+document.getElementById('nav-license-report').addEventListener('click', () => navigate('license-report'));
 document.getElementById('nav-tech-map').addEventListener('click', () => navigate('tech-map'));
 document.getElementById('nav-scans').addEventListener('click', () => navigate('scans'));
 document.getElementById('nav-scans-queue').addEventListener('click', () => navigate('scans-queue'));
@@ -97,4 +104,5 @@ window.addEventListener('popstate', () => {
 window.addEventListener('resize', () => {
   if (treemapChartInstance) treemapChartInstance.resize();
   if (activityTreeChartInstance) activityTreeChartInstance.resize();
+  if (sizeHistoryChartInstance) sizeHistoryChartInstance.resize();
 });
