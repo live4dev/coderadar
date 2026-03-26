@@ -1,6 +1,6 @@
 import { state } from '../state.js';
 import { api } from '../api.js';
-import { fmt, setMain } from '../utils.js';
+import { fmt, fmtBytes, setMain } from '../utils.js';
 
 export let treemapChartInstance = null;
 let stateTreemapMetric = 'loc';
@@ -8,6 +8,9 @@ let stateTreemapMetric = 'loc';
 export let activityTreeChartInstance = null;
 let stateActivityMetric = 'commits';
 let stateActivityPeriod = '1y';
+
+export let sizeHistoryChartInstance = null;
+let stateSizeMetric = 'loc';
 
 export function activityPeriodChange() {
   const sel = document.getElementById('activity-period');
@@ -38,6 +41,19 @@ export function disposeTreemap() {
 export function treemapMetricChange() {
   const sel = document.getElementById('treemap-metric');
   if (sel) stateTreemapMetric = sel.value;
+  renderAnalytics();
+}
+
+export function disposeSizeHistory() {
+  if (sizeHistoryChartInstance) {
+    sizeHistoryChartInstance.dispose();
+    sizeHistoryChartInstance = null;
+  }
+}
+
+export function sizeMetricChange() {
+  const sel = document.getElementById('size-history-metric');
+  if (sel) stateSizeMetric = sel.value;
   renderAnalytics();
 }
 
@@ -78,13 +94,26 @@ export async function renderAnalytics() {
       </select>
     </div>
     <div id="activity-tree-chart" style="width:100%;height:500px"></div>
+    <h2 style="margin-top:32px;margin-bottom:4px;font-size:15px;color:var(--text)">Size History</h2>
+    <p class="page-subtitle">Codebase size month by month over the last 5 years, stacked by repository.</p>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+      <label for="size-history-metric" style="font-size:13px;color:#64748b">Metric</label>
+      <select id="size-history-metric" class="modal-input" style="width:120px;margin:0" onchange="sizeMetricChange()">
+        <option value="loc" ${stateSizeMetric === 'loc' ? 'selected' : ''}>LOC</option>
+        <option value="files" ${stateSizeMetric === 'files' ? 'selected' : ''}>Files</option>
+        <option value="bytes" ${stateSizeMetric === 'bytes' ? 'selected' : ''}>Size</option>
+      </select>
+    </div>
+    <div id="size-history-chart" style="width:100%;height:400px"></div>
   `);
 
   const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
   const actParams = new URLSearchParams({ metric: stateActivityMetric, period: stateActivityPeriod });
-  const [tree, activityTree] = await Promise.all([
+  const sizeParams = new URLSearchParams({ metric: stateSizeMetric });
+  const [tree, activityTree, sizeHistory] = await Promise.all([
     api('/analytics/treemap?' + params.toString()),
     api('/analytics/activity-tree?' + actParams.toString()),
+    api('/analytics/size-history?' + sizeParams.toString()),
   ]);
 
   // --- existing treemap ---
@@ -157,5 +186,74 @@ export async function renderAnalytics() {
         { itemStyle: { borderColor: '#2e3350', borderWidth: 1 } },
       ],
     }],
+  });
+
+  // --- size history stacked area ---
+  const sizeEl = document.getElementById('size-history-chart');
+  if (!sizeHistory || !sizeHistory.repos || sizeHistory.repos.length === 0 || sizeHistory.totals.every(v => v === 0)) {
+    sizeEl.innerHTML = '<div class="empty"><p>No scan history yet. Run scans on repositories to see size trends.</p></div>';
+    return;
+  }
+  if (!window.echarts) return;
+
+  const fmtVal = stateSizeMetric === 'bytes' ? fmtBytes : fmt;
+
+  // Format month labels: "2021-03" -> "Mar 2021"
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const xLabels = sizeHistory.months.map(m => {
+    const [y, mo] = m.split('-');
+    return monthNames[parseInt(mo, 10) - 1] + ' ' + y;
+  });
+
+  // Build one series per repo; null values rendered as 0 for stacking
+  const palette = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899','#14b8a6'];
+  const series = sizeHistory.repos.map((repo, i) => ({
+    name: repo.name,
+    type: 'line',
+    stack: 'total',
+    smooth: true,
+    areaStyle: { opacity: 0.6 },
+    lineStyle: { width: 1 },
+    color: palette[i % palette.length],
+    data: repo.values.map(v => v ?? 0),
+    emphasis: { focus: 'series' },
+  }));
+
+  sizeHistoryChartInstance = echarts.init(sizeEl, 'dark');
+  sizeHistoryChartInstance.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (params) => {
+        const month = params[0]?.axisValue || '';
+        const total = params.reduce((s, p) => s + (p.value || 0), 0);
+        const lines = params
+          .filter(p => p.value > 0)
+          .sort((a, b) => b.value - a.value)
+          .map(p => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:4px"></span>${p.seriesName}: ${fmtVal(p.value)}`)
+          .join('<br/>');
+        return `<b>${month}</b><br/>Total: ${fmtVal(total)}<br/>${lines}`;
+      },
+    },
+    legend: { type: 'scroll', bottom: 0, textStyle: { color: '#94a3b8', fontSize: 11 } },
+    grid: { left: 60, right: 20, top: 20, bottom: 50 },
+    xAxis: {
+      type: 'category',
+      data: xLabels,
+      axisLabel: {
+        color: '#64748b',
+        fontSize: 10,
+        interval: (idx) => idx % 6 === 0,
+        rotate: 30,
+      },
+      axisLine: { lineStyle: { color: '#2e3350' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#64748b', fontSize: 10, formatter: fmtVal },
+      splitLine: { lineStyle: { color: '#1e2235' } },
+    },
+    series,
   });
 }

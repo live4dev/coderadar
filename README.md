@@ -100,11 +100,90 @@ curl http://localhost:8000/api/v1/scans/1/risks
 curl http://localhost:8000/api/v1/scans/1/developers
 ```
 
-## Scan a local repository (demo mode)
+## Scripts
+
+### Scan a local repository (demo mode)
+
+Scan any local git repository without Bitbucket/GitLab credentials.
 
 ```bash
 python scripts/local_scan.py --path /path/to/local/repo --project-name "Demo"
+# Optional: specify branch metadata
+python scripts/local_scan.py --path /path/to/local/repo --project-name "Demo" --branch develop
 ```
+
+Runs the full analysis pipeline (files, stack, dependencies, git analytics, scoring, risks) and stores results in the database.
+
+### Enqueue scans for all repositories
+
+Create pending scans for every repository already in the database, then process them with the worker.
+
+```bash
+python scripts/scan_all_repositories.py
+python -m app.worker   # in a separate terminal
+```
+
+### Tag inactive developers
+
+Applies an `inactive` tag to developers whose commit history suggests they are no longer active. Uses a composite inactivity score based on days since last commit, personal commit rhythm, and recent-activity drop-off — not a fixed date cutoff.
+
+> **Note:** `inactive` is a probabilistic signal, not a statement about employment status. A developer may be on leave, in a management role, or contributing to repositories not tracked here.
+
+```bash
+# Preview without writing to DB
+python scripts/tag_inactive_developers.py --dry-run
+
+# Apply tags (default: score >= 4.0 and last commit >= 30 days ago)
+python scripts/tag_inactive_developers.py
+
+# Restrict to one project
+python scripts/tag_inactive_developers.py --project-id 1
+
+# Adjust sensitivity
+python scripts/tag_inactive_developers.py --threshold 3.0 --min-days 60
+
+# Also remove 'inactive' tag from developers who are now active
+python scripts/tag_inactive_developers.py --untag-active
+```
+
+**Inactivity score formula:**
+
+```
+avg_interval  = (last_commit - first_commit).days / max(active_days - 1, 1)
+recent_ratio  = commits_last_90d / max(avg_daily_commits × 90, 1)   # clamped 0..1
+score         = (days_since_last_commit / avg_interval) × (1 − recent_ratio)
+```
+
+| Score | Interpretation |
+| ----- | -------------- |
+| < 2 | Active |
+| 2 – threshold | Possibly inactive (not tagged) |
+| ≥ threshold AND days ≥ min-days | Tagged as `inactive` |
+
+### Tag inactive repositories
+
+Applies an `inactive` tag to repositories whose commit history suggests development has gone quiet. Uses the same composite inactivity score as the developer tagger, but sourced from `RepositoryDailyActivity`.
+
+> **Note:** `inactive` is a probabilistic signal. A repository may be stable and intentionally quiet, in a freeze period, or only updated at release time.
+
+```bash
+# Preview without writing to DB
+python scripts/tag_inactive_repositories.py --dry-run
+
+# Apply tags (default: score >= 4.0 and last commit >= 30 days ago)
+python scripts/tag_inactive_repositories.py
+
+# Restrict to one project
+python scripts/tag_inactive_repositories.py --project-id 1
+
+# Adjust sensitivity
+python scripts/tag_inactive_repositories.py --threshold 3.0 --min-days 60
+
+# Also remove 'inactive' tag from repositories that are now active
+python scripts/tag_inactive_repositories.py --untag-active
+```
+
+The tag includes a description: `"Auto-tagged: no commit activity since YYYY-MM-DD"`.
 
 ## Add identity override
 

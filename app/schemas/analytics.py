@@ -54,3 +54,15 @@ class TechCounts(BaseModel):
 class TechMapResponse(BaseModel):
     repos: list[TechMapRepo]
     tech_counts: TechCounts
+
+
+class SizeHistoryRepo(BaseModel):
+    id: int
+    name: str
+    values: list[int | None]
+
+
+class SizeHistoryResponse(BaseModel):
+    months: list[str]
+    repos: list[SizeHistoryRepo]
+    totals: list[int]

@@ -190,3 +190,34 @@ class ScanCompareOut(BaseModel):
     scores: list[ScanScoreDiff]
     risks: list[ScanRiskDiff]
     developers: list[ScanDeveloperDiff]
+
+
+class LicenseRiskyDepOut(BaseModel):
+    name: str
+    version: str | None
+    ecosystem: str | None
+    license_spdx: str | None
+    license_raw: str | None
+
+
+class LicenseReportEntry(BaseModel):
+    project_id: int
+    project_name: str
+    repository_id: int
+    repository_name: str
+    scan_id: int
+    scan_started_at: datetime | None
+    scan_completed_at: datetime | None
+    total: int
+    direct_count: int
+    transitive_count: int
+    safe_count: int
+    risky_count: int
+    unknown_count: int
+    risk_score: int  # 0–100
+    ecosystem_counts: dict[str, int]
+    risky_deps: list[LicenseRiskyDepOut]
+
+
+class LicenseReportOut(BaseModel):
+    entries: list[LicenseReportEntry]

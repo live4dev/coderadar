@@ -18,6 +18,13 @@ from app.schemas.developer import (
 router = APIRouter(prefix="/developers", tags=["developers"])
 
 
+@router.get("/tags", response_model=list[str])
+def list_developer_tags(db: Session = Depends(get_db)):
+    """Return all unique developer tags sorted alphabetically."""
+    rows = db.query(DeveloperTag.tag).distinct().order_by(DeveloperTag.tag).all()
+    return [r.tag for r in rows]
+
+
 def _profile_to_out(p: DeveloperProfile) -> DeveloperProfileOut:
     return DeveloperProfileOut(
         id=p.id,
@@ -37,6 +44,7 @@ def list_developers(
     sort_by: str = Query("commits", description="Sort by: commits, insertions, deletions, files_changed, active_days, last_commit_at, name"),
     order: str = Query("desc", description="Sort order: asc or desc"),
     q: str | None = Query(None, description="Search by display name, username or email"),
+    tag: str | None = Query(None, description="Filter by tag"),
     offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -98,6 +106,14 @@ def list_developers(
             .subquery()
         )
         q_base = q_base.filter(Developer.id.in_(db.query(dev_ids_with_search.c.id)))
+
+    if tag and tag.strip():
+        dev_ids_with_tag = (
+            db.query(DeveloperTag.developer_id)
+            .filter(DeveloperTag.tag == tag.strip())
+            .subquery()
+        )
+        q_base = q_base.filter(Developer.id.in_(db.query(dev_ids_with_tag.c.developer_id)))
 
     sq = q_base.subquery()
     total, total_commits_all = db.query(
