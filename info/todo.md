@@ -10,8 +10,7 @@
 - [x] Add Projects contributions calendar to page  "/ui/projects"
 - [x] Add filter by tags for developers page
 - [x] Add tag "inactive" for developers
-- [ ] Add tag "inactive" for repositories
-- [ ] Add developers tags: no_recent_commits for developers and repositories
+- [x] Add tag "inactive" for repositories
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements
 - [ ] Add Risks Map per project / repository to Analytic section
