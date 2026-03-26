@@ -6,6 +6,7 @@ export const state = {
   repoId: null,
   scanId: null,
   tab: 'summary',
+  analyticsTab: 'code-size',
   developerId: null,
   projectFilter: null,
   projectName: null,

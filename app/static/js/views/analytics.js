@@ -1,3 +1,5 @@
+import { state } from '../state.js';
+import { stateToPath } from '../router.js';
 import { api } from '../api.js';
 import { fmt, fmtBytes, setMain } from '../utils.js';
 
@@ -11,10 +13,9 @@ let stateActivityPeriod = '1y';
 export let sizeHistoryChartInstance = null;
 let stateSizeMetric = 'loc';
 
-let analyticsTab = 'code-size';
-
 export function showAnalyticsTab(tab) {
-  analyticsTab = tab;
+  state.analyticsTab = tab;
+  history.pushState(null, '', stateToPath(state));
   disposeTreemap();
   disposeActivityTree();
   disposeSizeHistory();
@@ -82,11 +83,11 @@ const tabDefs = [
 
 export async function renderAnalytics() {
   const tabs = tabDefs
-    .map(t => `<div class="tab ${analyticsTab === t.key ? 'active' : ''}" onclick="showAnalyticsTab('${t.key}')">${t.label}</div>`)
+    .map(t => `<div class="tab ${state.analyticsTab === t.key ? 'active' : ''}" onclick="showAnalyticsTab('${t.key}')">${t.label}</div>`)
     .join('');
 
   let contentHtml = '';
-  if (analyticsTab === 'code-size') {
+  if (state.analyticsTab === 'code-size') {
     contentHtml = `
       <p class="page-subtitle">LOC or files by project and repository (from latest completed scan per repo).</p>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
@@ -97,7 +98,7 @@ export async function renderAnalytics() {
         </select>
       </div>
       <div id="treemap-chart"></div>`;
-  } else if (analyticsTab === 'activity') {
+  } else if (state.analyticsTab === 'activity') {
     contentHtml = `
       <p class="page-subtitle">Color intensity = developer activity per repository (from latest completed scan per repo).</p>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
@@ -135,7 +136,7 @@ export async function renderAnalytics() {
     ${contentHtml}
   `);
 
-  if (analyticsTab === 'code-size') {
+  if (state.analyticsTab === 'code-size') {
     const params = new URLSearchParams({ metric: stateTreemapMetric, group_by: 'projects_repos' });
     const tree = await api('/analytics/treemap?' + params.toString());
     const root = treeToECharts(tree);
@@ -173,7 +174,7 @@ export async function renderAnalytics() {
         });
       }
     }
-  } else if (analyticsTab === 'activity') {
+  } else if (state.analyticsTab === 'activity') {
     const actParams = new URLSearchParams({ metric: stateActivityMetric, period: stateActivityPeriod });
     const activityTree = await api('/analytics/activity-tree?' + actParams.toString());
     const activityRoot = treeToECharts(activityTree);

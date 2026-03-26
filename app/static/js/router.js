@@ -1,4 +1,4 @@
-import { VALID_TABS, UI_BASE } from './constants.js';
+import { VALID_TABS, VALID_ANALYTICS_TABS, UI_BASE } from './constants.js';
 
 export function pathToState(pathname) {
   const raw = pathname.replace(/^\/ui\/?/, '').replace(/\/$/, '');
@@ -22,7 +22,8 @@ export function pathToState(pathname) {
     return { view: 'scans-queue', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
   }
   if (segments[0] === 'analytics') {
-    return { view: 'analytics', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+    const analyticsTab = segments[1] && VALID_ANALYTICS_TABS.includes(segments[1]) ? segments[1] : 'code-size';
+    return { view: 'analytics', projectId: null, repoId: null, scanId: null, tab: 'summary', analyticsTab, developerId: null, projectFilter: null };
   }
   if (segments[0] === 'tech-map') {
     return { view: 'tech-map', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
@@ -59,7 +60,7 @@ export function stateToPath(s) {
   if (s.view === 'personal-data-report') return UI_BASE + '/personal-data';
   if (s.view === 'license-report') return UI_BASE + '/license-report';
   if (s.view === 'scans-queue') return UI_BASE + '/scans-queue';
-  if (s.view === 'analytics') return UI_BASE + '/analytics';
+  if (s.view === 'analytics') return UI_BASE + '/analytics/' + (s.analyticsTab || 'code-size');
   if (s.view === 'tech-map') return UI_BASE + '/tech-map';
   if (s.view === 'admin-projects')   return UI_BASE + '/admin/projects';
   if (s.view === 'admin-repos')      return UI_BASE + '/admin/repos';

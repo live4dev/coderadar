@@ -5,4 +5,6 @@ export const LANG_COLORS = [
 
 export const VALID_TABS = ['summary', 'languages', 'scores', 'risks', 'developers', 'personal-data', 'git-tags'];
 
+export const VALID_ANALYTICS_TABS = ['code-size', 'activity', 'size-history'];
+
 export const UI_BASE = '/ui';

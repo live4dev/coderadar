@@ -15,3 +15,6 @@
 - [ ] Add Licence scanner for requirements
 - [ ] Add Risks Map per project / repository to Analytic section
 - [ ] Add difference analizer between versions
+- [ ] Personal data scanner improvements, taks into account only variables, not docs
+- [ ] Describe code quality metrics
+- [ ] Project/repository risk matrix
