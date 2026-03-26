@@ -10,6 +10,7 @@ from app.core.logging import setup_logging
 from app.api.router import api_router
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_DOCS_DIR = Path(__file__).parent.parent / "docs"
 
 
 @asynccontextmanager
@@ -33,6 +34,11 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.get("/uikit", include_in_schema=False)
+def uikit():
+    return FileResponse(_DOCS_DIR / "coderadar-ui-kit.html")
 
 
 @app.get("/health", tags=["health"])
