@@ -327,18 +327,26 @@ def get_tech_map(
 @router.get("/size-history", response_model=SizeHistoryResponse)
 def get_size_history(
     metric: str = Query("loc", description="Size metric: loc, files, or bytes"),
+    years: int = Query(5, description="Number of years to look back (1, 2, 3, or 5)"),
+    project_id: int | None = Query(None, description="Optional: limit to one project"),
+    group_by: str = Query("repository", description="Group series by: repository or project"),
     db: Session = Depends(get_db),
 ):
-    """Return monthly codebase size for the last 5 years, one value per repo per month."""
+    """Return monthly codebase size over the requested period, grouped by repo or project."""
     if metric not in ("loc", "files", "bytes"):
         raise HTTPException(400, "metric must be loc, files, or bytes")
+    if years not in (1, 2, 3, 5):
+        raise HTTPException(400, "years must be 1, 2, 3, or 5")
+    if group_by not in ("repository", "project"):
+        raise HTTPException(400, "group_by must be repository or project")
 
-    # Generate 60 monthly slots (5 years back to current month inclusive)
+    # Generate monthly slots for the requested period
+    num_months = years * 12
     today = date.today()
     months: list[str] = []
     month_ends: list[date] = []
     y, m = today.year, today.month
-    for _ in range(60):
+    for _ in range(num_months):
         last_day = monthrange(y, m)[1]
         months.append(f"{y:04d}-{m:02d}")
         month_ends.append(date(y, m, last_day))
@@ -349,8 +357,18 @@ def get_size_history(
     months.reverse()
     month_ends.reverse()
 
+    # Resolve repo_ids (optionally filtered by project)
+    if project_id is not None:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        allowed_repos = db.query(Repository.id).filter_by(project_id=project_id).all()
+        allowed_repo_ids: set[int] | None = {r.id for r in allowed_repos}
+    else:
+        allowed_repo_ids = None
+
     # Load all completed scans with their metric values
-    rows = (
+    q = (
         db.query(
             Scan.id,
             Scan.repository_id,
@@ -360,15 +378,15 @@ def get_size_history(
             Scan.size_bytes,
         )
         .filter(Scan.status == ScanStatus.completed)
-        .order_by(Scan.repository_id, Scan.created_at)
-        .all()
     )
+    if allowed_repo_ids is not None:
+        q = q.filter(Scan.repository_id.in_(allowed_repo_ids))
+    rows = q.order_by(Scan.repository_id, Scan.created_at).all()
 
-    # Group scans by repo, sorted by created_at (already ordered)
+    # Group scans by repo
     repo_scans: dict[int, list[tuple[date, int]]] = defaultdict(list)
     for row in rows:
         created = row.created_at.date() if isinstance(row.created_at, datetime) else row.created_at
-        val = 0
         if metric == "loc":
             val = row.total_loc or 0
         elif metric == "files":
@@ -378,39 +396,66 @@ def get_size_history(
         repo_scans[row.repository_id].append((created, val))
 
     if not repo_scans:
-        return SizeHistoryResponse(
-            months=months,
-            repos=[],
-            totals=[0] * len(months),
-        )
+        return SizeHistoryResponse(months=months, repos=[], totals=[0] * len(months))
 
-    # Load repo names
+    # Load repo metadata (name + project_id)
     repo_ids = list(repo_scans.keys())
-    repo_names: dict[int, str] = {
-        r.id: r.name
-        for r in db.query(Repository.id, Repository.name).filter(Repository.id.in_(repo_ids)).all()
-    }
+    repo_rows = (
+        db.query(Repository.id, Repository.name, Repository.project_id)
+        .filter(Repository.id.in_(repo_ids))
+        .all()
+    )
+    repo_meta: dict[int, tuple[str, int]] = {r.id: (r.name, r.project_id) for r in repo_rows}
 
-    # For each repo × month slot: find latest scan value at or before month end
-    result_repos: list[SizeHistoryRepo] = []
-    totals = [0] * len(months)
-
-    for repo_id, scans in sorted(repo_scans.items(), key=lambda x: x[0]):
+    # Compute per-repo monthly values
+    repo_monthly: dict[int, list[int | None]] = {}
+    for repo_id, scans in repo_scans.items():
         values: list[int | None] = []
-        for i, end_date in enumerate(month_ends):
-            # Find latest scan at or before end_date
+        for end_date in month_ends:
             val = None
             for scan_date, scan_val in reversed(scans):
                 if scan_date <= end_date:
                     val = scan_val
                     break
             values.append(val)
-            if val is not None:
-                totals[i] += val
-        result_repos.append(SizeHistoryRepo(
-            id=repo_id,
-            name=repo_names.get(repo_id, str(repo_id)),
-            values=values,
-        ))
+        repo_monthly[repo_id] = values
+
+    if group_by == "project":
+        # Aggregate repos into project-level series
+        project_rows = db.query(Project.id, Project.name).all()
+        project_names: dict[int, str] = {p.id: p.name for p in project_rows}
+
+        proj_monthly: dict[int, list[int]] = defaultdict(lambda: [0] * len(months))
+        for repo_id, values in repo_monthly.items():
+            _, proj_id = repo_meta.get(repo_id, ("", 0))
+            for i, v in enumerate(values):
+                if v is not None:
+                    proj_monthly[proj_id][i] += v
+
+        result_repos: list[SizeHistoryRepo] = []
+        totals = [0] * len(months)
+        for proj_id, values in sorted(proj_monthly.items()):
+            for i, v in enumerate(values):
+                totals[i] += v
+            # Convert zeros back to None for months before any scan existed
+            result_repos.append(SizeHistoryRepo(
+                id=proj_id,
+                name=project_names.get(proj_id, str(proj_id)),
+                values=[v if v > 0 else None for v in values],
+            ))
+    else:
+        result_repos = []
+        totals = [0] * len(months)
+        for repo_id in sorted(repo_monthly.keys()):
+            values = repo_monthly[repo_id]
+            for i, v in enumerate(values):
+                if v is not None:
+                    totals[i] += v
+            repo_name, _ = repo_meta.get(repo_id, (str(repo_id), 0))
+            result_repos.append(SizeHistoryRepo(
+                id=repo_id,
+                name=repo_name,
+                values=values,
+            ))
 
     return SizeHistoryResponse(months=months, repos=result_repos, totals=totals)

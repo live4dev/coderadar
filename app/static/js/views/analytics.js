@@ -12,6 +12,9 @@ let stateActivityPeriod = '1y';
 
 export let sizeHistoryChartInstance = null;
 let stateSizeMetric = 'loc';
+let stateSizeYears = 5;
+let stateSizeProjectId = '';
+let stateSizeGroupBy = 'repository';
 
 export function showAnalyticsTab(tab) {
   state.analyticsTab = tab;
@@ -67,6 +70,24 @@ export function sizeMetricChange() {
   renderAnalytics();
 }
 
+export function sizeYearsChange() {
+  const sel = document.getElementById('size-history-years');
+  if (sel) stateSizeYears = parseInt(sel.value, 10);
+  renderAnalytics();
+}
+
+export function sizeProjectChange() {
+  const sel = document.getElementById('size-history-project');
+  if (sel) stateSizeProjectId = sel.value;
+  renderAnalytics();
+}
+
+export function sizeGroupByChange() {
+  const sel = document.getElementById('size-history-groupby');
+  if (sel) stateSizeGroupBy = sel.value;
+  renderAnalytics();
+}
+
 function treeToECharts(node) {
   if (!node) return null;
   const name = node.name === 'root' ? 'All projects' : node.name;
@@ -118,16 +139,40 @@ export async function renderAnalytics() {
       <div id="activity-tree-chart" style="width:100%;height:500px"></div>`;
   } else {
     contentHtml = `
-      <p class="page-subtitle">Codebase size month by month over the last 5 years, stacked by repository.</p>
-      <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-        <label for="size-history-metric" style="font-size:13px;color:#64748b">Metric</label>
-        <select id="size-history-metric" class="modal-input" style="width:120px;margin:0" onchange="sizeMetricChange()">
-          <option value="loc" ${stateSizeMetric === 'loc' ? 'selected' : ''}>LOC</option>
-          <option value="files" ${stateSizeMetric === 'files' ? 'selected' : ''}>Files</option>
-          <option value="bytes" ${stateSizeMetric === 'bytes' ? 'selected' : ''}>Size</option>
-        </select>
+      <p class="page-subtitle">Codebase size month by month, stacked by repository or project.</p>
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="size-history-metric" style="font-size:13px;color:#64748b">Metric</label>
+          <select id="size-history-metric" class="modal-input" style="width:110px;margin:0" onchange="sizeMetricChange()">
+            <option value="loc" ${stateSizeMetric === 'loc' ? 'selected' : ''}>LOC</option>
+            <option value="files" ${stateSizeMetric === 'files' ? 'selected' : ''}>Files</option>
+            <option value="bytes" ${stateSizeMetric === 'bytes' ? 'selected' : ''}>Size</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="size-history-years" style="font-size:13px;color:#64748b">Period</label>
+          <select id="size-history-years" class="modal-input" style="width:100px;margin:0" onchange="sizeYearsChange()">
+            <option value="1" ${stateSizeYears === 1 ? 'selected' : ''}>1 year</option>
+            <option value="2" ${stateSizeYears === 2 ? 'selected' : ''}>2 years</option>
+            <option value="3" ${stateSizeYears === 3 ? 'selected' : ''}>3 years</option>
+            <option value="5" ${stateSizeYears === 5 ? 'selected' : ''}>5 years</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="size-history-project" style="font-size:13px;color:#64748b">Project</label>
+          <select id="size-history-project" class="modal-input" style="width:160px;margin:0" onchange="sizeProjectChange()">
+            <option value="">All projects</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="size-history-groupby" style="font-size:13px;color:#64748b">Group by</label>
+          <select id="size-history-groupby" class="modal-input" style="width:130px;margin:0" onchange="sizeGroupByChange()">
+            <option value="repository" ${stateSizeGroupBy === 'repository' ? 'selected' : ''}>Repository</option>
+            <option value="project" ${stateSizeGroupBy === 'project' ? 'selected' : ''}>Project</option>
+          </select>
+        </div>
       </div>
-      <div id="size-history-chart" style="width:100%;height:400px"></div>`;
+      <div id="size-history-chart" style="width:100%;height:420px"></div>`;
   }
 
   setMain(`
@@ -211,8 +256,24 @@ export async function renderAnalytics() {
       }],
     });
   } else {
-    const sizeParams = new URLSearchParams({ metric: stateSizeMetric });
-    const sizeHistory = await api('/analytics/size-history?' + sizeParams.toString());
+    const [projects, sizeHistory] = await Promise.all([
+      api('/projects'),
+      api('/analytics/size-history?' + new URLSearchParams({
+        metric: stateSizeMetric,
+        years: stateSizeYears,
+        group_by: stateSizeGroupBy,
+        ...(stateSizeProjectId ? { project_id: stateSizeProjectId } : {}),
+      }).toString()),
+    ]);
+
+    // Populate project dropdown
+    const projectSel = document.getElementById('size-history-project');
+    if (projectSel && Array.isArray(projects)) {
+      const opts = projects.map(p =>
+        `<option value="${p.id}" ${String(p.id) === String(stateSizeProjectId) ? 'selected' : ''}>${p.name}</option>`
+      ).join('');
+      projectSel.innerHTML = `<option value="">All projects</option>${opts}`;
+    }
     const sizeEl = document.getElementById('size-history-chart');
     if (!sizeHistory || !sizeHistory.repos || sizeHistory.repos.length === 0 || sizeHistory.totals.every(v => v === 0)) {
       sizeEl.innerHTML = '<div class="empty"><p>No scan history yet. Run scans on repositories to see size trends.</p></div>';
