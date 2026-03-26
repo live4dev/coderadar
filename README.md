@@ -160,6 +160,31 @@ score         = (days_since_last_commit / avg_interval) × (1 − recent_ratio)
 | 2 – threshold | Possibly inactive (not tagged) |
 | ≥ threshold AND days ≥ min-days | Tagged as `inactive` |
 
+### Tag inactive repositories
+
+Applies an `inactive` tag to repositories whose commit history suggests development has gone quiet. Uses the same composite inactivity score as the developer tagger, but sourced from `RepositoryDailyActivity`.
+
+> **Note:** `inactive` is a probabilistic signal. A repository may be stable and intentionally quiet, in a freeze period, or only updated at release time.
+
+```bash
+# Preview without writing to DB
+python scripts/tag_inactive_repositories.py --dry-run
+
+# Apply tags (default: score >= 4.0 and last commit >= 30 days ago)
+python scripts/tag_inactive_repositories.py
+
+# Restrict to one project
+python scripts/tag_inactive_repositories.py --project-id 1
+
+# Adjust sensitivity
+python scripts/tag_inactive_repositories.py --threshold 3.0 --min-days 60
+
+# Also remove 'inactive' tag from repositories that are now active
+python scripts/tag_inactive_repositories.py --untag-active
+```
+
+The tag includes a description: `"Auto-tagged: no commit activity since YYYY-MM-DD"`.
+
 ## Add identity override
 
 Map a raw git identity to a canonical username:
