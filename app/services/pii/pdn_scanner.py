@@ -21,6 +21,138 @@ MAX_FILE_BYTES = 1 * 1024 * 1024  # 1 MB
 MAX_LINES_PER_FILE = 100_000
 
 
+class _CommentStripper:
+    """Stateful per-file comment stripper. Maintains block-comment / docstring state
+    across successive calls to ``code_portion``.
+
+    Strips:
+    - Python/Ruby/Shell/YAML (hash-style): ``#`` to EOL, ``\"\"\"``/``'''`` docstrings
+    - C-style (JS/TS/Java/Go/C/Rust/…): ``//`` to EOL, ``/* … */`` blocks
+    - SQL: ``--`` to EOL, ``/* … */`` blocks
+    """
+
+    _HASH_EXTS = frozenset({
+        ".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml",
+        ".r", ".coffee",
+    })
+    _C_STYLE_EXTS = frozenset({
+        ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp", ".cc",
+        ".cxx", ".h", ".hpp", ".cs", ".rs", ".swift", ".kt", ".scala",
+        ".php", ".dart", ".m",
+    })
+    _SQL_EXTS = frozenset({".sql"})
+
+    def __init__(self, extension: str) -> None:
+        ext = extension.lower()
+        if ext in self._HASH_EXTS:
+            self._style = "hash"
+        elif ext in self._C_STYLE_EXTS:
+            self._style = "c_style"
+        elif ext in self._SQL_EXTS:
+            self._style = "sql"
+        else:
+            self._style = "none"
+        self._in_block_comment = False
+        self._in_py_docstring: str | None = None
+
+    def code_portion(self, line: str) -> str:
+        """Return the code (non-comment/non-docstring) part of *line*.
+
+        Returns an empty string when the line is entirely within a comment or
+        docstring block — callers should skip pattern matching for such lines.
+        """
+        raw = line.rstrip("\n")
+        if self._style == "hash":
+            return self._strip_hash(raw)
+        if self._style == "c_style":
+            return self._strip_c_style(raw)
+        if self._style == "sql":
+            return self._strip_sql(raw)
+        return raw
+
+    # ── hash-style (Python et al.) ────────────────────────────────────────────
+
+    def _strip_hash(self, s: str) -> str:
+        # Continuation of a multi-line docstring
+        if self._in_py_docstring:
+            end = s.find(self._in_py_docstring)
+            if end != -1:
+                self._in_py_docstring = None
+                return s[end + 3:]
+            return ""
+
+        i = 0
+        while i < len(s):
+            found_triple = False
+            for q3 in ('"""', "'''"):
+                if s[i:i + 3] == q3:
+                    close = s.find(q3, i + 3)
+                    if close != -1:
+                        # Inline triple-quoted string — remove it and re-scan
+                        s = s[:i] + s[close + 3:]
+                        found_triple = True
+                        break
+                    else:
+                        # Docstring opens here; rest of line is not code
+                        self._in_py_docstring = q3
+                        return s[:i]
+            if found_triple:
+                continue  # re-check same index after the splice
+            if s[i] == "#":
+                return s[:i]
+            i += 1
+        return s
+
+    # ── C-style ───────────────────────────────────────────────────────────────
+
+    def _strip_c_style(self, s: str) -> str:
+        if self._in_block_comment:
+            end = s.find("*/")
+            if end == -1:
+                return ""
+            self._in_block_comment = False
+            s = s[end + 2:]
+
+        result: list[str] = []
+        i = 0
+        while i < len(s):
+            if s[i:i + 2] == "//":
+                break
+            if s[i:i + 2] == "/*":
+                end = s.find("*/", i + 2)
+                if end == -1:
+                    self._in_block_comment = True
+                    break
+                i = end + 2
+                continue
+            result.append(s[i])
+            i += 1
+        return "".join(result)
+
+    # ── SQL ───────────────────────────────────────────────────────────────────
+
+    def _strip_sql(self, s: str) -> str:
+        if self._in_block_comment:
+            end = s.find("*/")
+            if end == -1:
+                return ""
+            self._in_block_comment = False
+            s = s[end + 2:]
+
+        bc = s.find("/*")
+        if bc != -1:
+            end = s.find("*/", bc + 2)
+            if end == -1:
+                self._in_block_comment = True
+                return s[:bc]
+            s = s[:bc] + s[end + 2:]
+
+        lc = s.find("--")
+        if lc != -1:
+            return s[:lc]
+        return s
+
+
 @dataclass
 class PDnFinding:
     """A single PDn identifier match in source code."""
@@ -106,14 +238,18 @@ def scan_repository_for_pdn(
         if "test" in rel_path.lower():
             continue
         try:
+            stripper = _CommentStripper(item.suffix)
             with open(item, encoding="utf-8", errors="replace") as f:
                 line_num = 0
                 for line in f:
                     line_num += 1
                     if line_num > MAX_LINES_PER_FILE:
                         break
+                    code = stripper.code_portion(line)
+                    if not code.strip():
+                        continue
                     for pdn_type, regex in compiled:
-                        m = regex.search(line)
+                        m = regex.search(code)
                         if m:
                             findings.append(
                                 PDnFinding(

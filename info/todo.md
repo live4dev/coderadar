@@ -18,3 +18,4 @@
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
 - [ ] Describe code quality metrics
 - [ ] Project/repository risk matrix
+- [ ] Script for import from BB/gitlab

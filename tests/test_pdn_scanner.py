@@ -6,6 +6,7 @@ import pytest
 from app.services.pii.config import PDnTypeConfig
 from app.services.pii.pdn_scanner import (
     PDnFinding,
+    _CommentStripper,
     _build_identifier_patterns,
     _is_source_file,
     scan_repository_for_pdn,
@@ -178,3 +179,98 @@ def test_scan_skips_hidden_dirs():
     })
     findings = scan_repository_for_pdn(repo, [pdn])
     assert all(".git" not in f.file_path for f in findings)
+
+
+# ── _CommentStripper ──────────────────────────────────────────────────────────
+
+def test_stripper_hash_inline_comment():
+    s = _CommentStripper(".py")
+    assert s.code_portion("x = 1  # user_email here\n").strip() == "x = 1"
+
+
+def test_stripper_hash_full_comment_line():
+    s = _CommentStripper(".py")
+    assert s.code_portion("# user_email = something\n").strip() == ""
+
+
+def test_stripper_python_docstring_multiline():
+    s = _CommentStripper(".py")
+    assert s.code_portion('"""\n').strip() == ""
+    assert s.code_portion("user_email = x\n").strip() == ""   # inside docstring
+    assert s.code_portion('"""\n').strip() == ""              # closing line
+
+
+def test_stripper_python_inline_docstring_removed():
+    s = _CommentStripper(".py")
+    result = s.code_portion('x = """user_email""" + y\n')
+    assert "user_email" not in result
+    assert "x" in result and "y" in result
+
+
+def test_stripper_c_style_line_comment():
+    s = _CommentStripper(".js")
+    assert s.code_portion("const x = 1; // user_email here\n").strip() == "const x = 1;"
+
+
+def test_stripper_c_style_full_comment():
+    s = _CommentStripper(".ts")
+    assert s.code_portion("// user_email = something\n").strip() == ""
+
+
+def test_stripper_c_style_block_comment_multiline():
+    s = _CommentStripper(".java")
+    assert s.code_portion("/* user_email start\n").strip() == ""
+    assert s.code_portion("   user_email inside\n").strip() == ""
+    assert s.code_portion("   user_email end */\n").strip() == ""
+
+
+def test_stripper_sql_line_comment():
+    s = _CommentStripper(".sql")
+    assert s.code_portion("SELECT id -- user_email\n").strip() == "SELECT id"
+
+
+def test_stripper_unknown_ext_passthrough():
+    s = _CommentStripper(".xyz")
+    line = "user_email = x\n"
+    assert s.code_portion(line) == line.rstrip("\n")
+
+
+# ── scan skips comments / docstrings ─────────────────────────────────────────
+
+def test_scan_skips_python_comment():
+    pdn = _pdn("email", "user_email")
+    repo = _make_repo({"app/service.py": "# user_email is stored here\nx = 1\n"})
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert findings == []
+
+
+def test_scan_skips_python_docstring():
+    pdn = _pdn("email", "user_email")
+    content = '"""\nuser_email: the user\'s email address\n"""\nx = 1\n'
+    repo = _make_repo({"app/service.py": content})
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert findings == []
+
+
+def test_scan_finds_code_but_not_comment_on_same_line():
+    pdn = _pdn("email", "user_email")
+    # identifier appears only in the comment portion
+    repo = _make_repo({"app/service.py": "x = get_value()  # user_email\n"})
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert findings == []
+
+
+def test_scan_finds_identifier_after_inline_comment_stripped():
+    pdn = _pdn("email", "user_email")
+    # identifier in code, not comment
+    repo = _make_repo({"app/service.py": "user_email = req.data  # fetch it\n"})
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert len(findings) == 1
+
+
+def test_scan_skips_js_block_comment():
+    pdn = _pdn("phone", "phone_number")
+    content = "/**\n * phone_number field\n */\nconst x = 1;\n"
+    repo = _make_repo({"src/api.js": content})
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert findings == []
