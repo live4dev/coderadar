@@ -185,6 +185,54 @@ python scripts/tag_inactive_repositories.py --untag-active
 
 The tag includes a description: `"Auto-tagged: no commit activity since YYYY-MM-DD"`.
 
+## Personal data scanner
+
+CodeRadar can scan source files for variable and field names that suggest personal data (PDn / PII) is being handled — useful for compliance audits and data-flow awareness.
+
+### How it works
+
+The scanner walks every non-test, non-binary source file in the repository and looks for identifier names (variable names, field names, parameter names) that match a configured list. Matches inside **comments, docstrings, and block comments** are ignored so only actual code references are reported.
+
+Supported comment styles:
+
+| Style | Languages |
+| ----- | --------- |
+| `#` to EOL + `"""` / `'''` docstrings | Python, Ruby, Shell, YAML, TOML |
+| `//` to EOL + `/* … */` blocks | JS/TS, Java, Go, C/C++, Rust, Swift, Kotlin, PHP |
+| `--` to EOL + `/* … */` blocks | SQL |
+
+### Configuration
+
+PDn types are defined in `config/pdn_types.yaml`:
+
+```yaml
+pdn_types:
+  - name: email
+    identifiers:
+      - email
+      - email_address
+      - emailAddress
+      - user_email
+      - userEmail
+  - name: phone
+    identifiers:
+      - phone
+      - phone_number
+      - phoneNumber
+```
+
+Each `name` is the category reported in findings. Each entry in `identifiers` is matched as a whole word (word-boundary anchored) against code tokens. The config path can be overridden via the `PDN_TYPES_CONFIG` environment variable.
+
+### Findings
+
+Results are stored per scan in the `scan_personal_data_findings` table and exposed via the API:
+
+```bash
+curl http://localhost:8000/api/v1/scans/1/personal-data
+```
+
+Each finding includes the PDn category, file path, line number, and the exact matched identifier.
+
 ## Add identity override
 
 Map a raw git identity to a canonical username:
