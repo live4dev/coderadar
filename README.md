@@ -102,6 +102,72 @@ curl http://localhost:8000/api/v1/scans/1/developers
 
 ## Scripts
 
+### Import from GitLab
+
+Bulk-register groups and repositories from a GitLab instance. Each group becomes a CodeRadar project. Already-imported repos are skipped (idempotent).
+
+```bash
+# Import all groups accessible to the token
+python scripts/import_gitlab.py --token $GITLAB_TOKEN
+
+# Limit to one group (includes subgroups)
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group
+
+# Self-hosted instance
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --base-url https://gitlab.example.com --group my-group
+
+# Preview without writing to the database
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group --dry-run
+
+# Import and immediately enqueue scans
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group --scan
+python -m app.worker   # in a separate terminal
+```
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `--token` | `$GITLAB_TOKEN` | GitLab Personal Access Token |
+| `--base-url` | `$GITLAB_URL` / `https://gitlab.com` | GitLab instance URL |
+| `--group` | all groups | Limit to this group path or numeric ID |
+| `--project-name` | group full path | Override CodeRadar project name (single-group mode) |
+| `--skip-archived` | false | Skip archived repositories |
+| `--default-branch` | `main` | Fallback branch name |
+| `--scan` | false | Enqueue scans for newly imported repos |
+| `--dry-run` | false | Preview without writing to the database |
+
+### Import from GitHub
+
+Bulk-register repositories from a GitHub organisation or user. The org/user becomes a single CodeRadar project. Already-imported repos are skipped (idempotent).
+
+```bash
+# Import an organisation's repos
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org
+
+# Import a user's repos
+python scripts/import_github.py --token $GITHUB_TOKEN --user octocat
+
+# Import the token owner's own repos (no --org / --user needed)
+python scripts/import_github.py --token $GITHUB_TOKEN
+
+# Skip forks and archived repos, preview first
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org --skip-forks --skip-archived --dry-run
+
+# Import and immediately enqueue scans
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org --scan
+python -m app.worker   # in a separate terminal
+```
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `--token` | `$GITHUB_TOKEN` | GitHub Personal Access Token |
+| `--org` | — | Import repos from this GitHub organisation |
+| `--user` | — | Import repos from this GitHub user |
+| `--skip-archived` | false | Skip archived repositories |
+| `--skip-forks` | false | Skip forked repositories |
+| `--default-branch` | `main` | Fallback branch name |
+| `--scan` | false | Enqueue scans for newly imported repos |
+| `--dry-run` | false | Preview without writing to the database |
+
 ### Scan a local repository (demo mode)
 
 Scan any local git repository without Bitbucket/GitLab credentials.
