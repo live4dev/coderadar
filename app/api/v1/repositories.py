@@ -56,9 +56,6 @@ def create_repository(body: RepositoryCreate, db: Session = Depends(get_db)):
         repo = Repository(url=body.url, provider_type=provider)
         db.add(repo)
         db.flush()
-    elif repo.provider_type != provider:
-        # Update provider_type if caller specifies a different one
-        repo.provider_type = provider
 
     pr = ProjectRepository(
         project_id=body.project_id,
@@ -140,6 +137,7 @@ def update_repository(repo_id: int, body: RepositoryUpdate, db: Session = Depend
             db.flush()
         pr.repository_id = new_repo.id
         pr.repository = new_repo
+        db.flush()
         # Clean up old repository if it has no remaining project_repositories
         remaining = db.query(ProjectRepository).filter_by(repository_id=old_repo.id).count()
         if remaining == 0:

@@ -22,13 +22,14 @@ MAX_LINES_PER_FILE = 100_000
 
 
 class _CommentStripper:
-    """Stateful per-file comment stripper. Maintains block-comment / docstring state
-    across successive calls to ``code_portion``.
+    """Stateful per-file comment splitter. Maintains block-comment / docstring state
+    across successive calls to ``scan_line``.
 
-    Strips:
+    Splits each line into (code_part, comment_part):
     - Python/Ruby/Shell/YAML (hash-style): ``#`` to EOL, ``\"\"\"``/``'''`` docstrings
     - C-style (JS/TS/Java/Go/C/Rust/…): ``//`` to EOL, ``/* … */`` blocks
     - SQL: ``--`` to EOL, ``/* … */`` blocks
+    - Other (Markdown, RST, plain text): full line returned as code, no comment part
     """
 
     _HASH_EXTS = frozenset({
@@ -55,31 +56,32 @@ class _CommentStripper:
         self._in_block_comment = False
         self._in_py_docstring: str | None = None
 
-    def code_portion(self, line: str) -> str:
-        """Return the code (non-comment/non-docstring) part of *line*.
+    def scan_line(self, line: str) -> tuple[str, str]:
+        """Return ``(code_part, comment_part)`` for *line*.
 
-        Returns an empty string when the line is entirely within a comment or
-        docstring block — callers should skip pattern matching for such lines.
+        For ``none``-style files (Markdown, RST, plain text, unknown) the
+        full line is returned as code and comment is empty — the caller will
+        scan it as a documentation line without any stripping.
         """
         raw = line.rstrip("\n")
         if self._style == "hash":
-            return self._strip_hash(raw)
+            return self._split_hash(raw)
         if self._style == "c_style":
-            return self._strip_c_style(raw)
+            return self._split_c_style(raw)
         if self._style == "sql":
-            return self._strip_sql(raw)
-        return raw
+            return self._split_sql(raw)
+        return raw, ""
 
     # ── hash-style (Python et al.) ────────────────────────────────────────────
 
-    def _strip_hash(self, s: str) -> str:
-        # Continuation of a multi-line docstring
+    def _split_hash(self, s: str) -> tuple[str, str]:
+        # Continuation of a multi-line docstring — whole line is comment/doc
         if self._in_py_docstring:
             end = s.find(self._in_py_docstring)
             if end != -1:
                 self._in_py_docstring = None
-                return s[end + 3:]
-            return ""
+                return s[end + 3:], s[:end + 3]
+            return "", s
 
         i = 0
         while i < len(s):
@@ -95,62 +97,72 @@ class _CommentStripper:
                     else:
                         # Docstring opens here; rest of line is not code
                         self._in_py_docstring = q3
-                        return s[:i]
+                        return s[:i], s[i:]
             if found_triple:
                 continue  # re-check same index after the splice
             if s[i] == "#":
-                return s[:i]
+                return s[:i], s[i + 1:]
             i += 1
-        return s
+        return s, ""
 
     # ── C-style ───────────────────────────────────────────────────────────────
 
-    def _strip_c_style(self, s: str) -> str:
+    def _split_c_style(self, s: str) -> tuple[str, str]:
         if self._in_block_comment:
             end = s.find("*/")
             if end == -1:
-                return ""
+                return "", s
             self._in_block_comment = False
-            s = s[end + 2:]
+            tail_code, tail_comment = self._split_c_style(s[end + 2:])
+            return tail_code, s[:end + 2] + tail_comment
 
-        result: list[str] = []
+        code: list[str] = []
+        comment: list[str] = []
         i = 0
         while i < len(s):
             if s[i:i + 2] == "//":
+                comment.append(s[i + 2:])
                 break
             if s[i:i + 2] == "/*":
                 end = s.find("*/", i + 2)
                 if end == -1:
                     self._in_block_comment = True
+                    comment.append(s[i + 2:])
                     break
+                comment.append(s[i + 2:end])
                 i = end + 2
                 continue
-            result.append(s[i])
+            code.append(s[i])
             i += 1
-        return "".join(result)
+        return "".join(code), "".join(comment)
 
     # ── SQL ───────────────────────────────────────────────────────────────────
 
-    def _strip_sql(self, s: str) -> str:
+    def _split_sql(self, s: str) -> tuple[str, str]:
         if self._in_block_comment:
             end = s.find("*/")
             if end == -1:
-                return ""
+                return "", s
             self._in_block_comment = False
             s = s[end + 2:]
+
+        comment_parts: list[str] = []
 
         bc = s.find("/*")
         if bc != -1:
             end = s.find("*/", bc + 2)
             if end == -1:
                 self._in_block_comment = True
-                return s[:bc]
+                comment_parts.append(s[bc + 2:])
+                return s[:bc], "".join(comment_parts)
+            comment_parts.append(s[bc + 2:end])
             s = s[:bc] + s[end + 2:]
 
         lc = s.find("--")
         if lc != -1:
-            return s[:lc]
-        return s
+            comment_parts.append(s[lc + 2:])
+            return s[:lc], "".join(comment_parts)
+        return s, "".join(comment_parts)
 
 
 @dataclass
@@ -162,6 +174,10 @@ class PDnFinding:
     matched_identifier: str
 
 
+# Plain-text documentation extensions not in EXTENSION_LANG_MAP but worth scanning
+_DOC_EXTENSIONS = frozenset({".txt", ".adoc", ".wiki"})
+
+
 def _is_source_file(path: Path) -> bool:
     """True if file is a text source we should scan (same logic as file_analyzer)."""
     if path.name in FILENAME_LANG_MAP:
@@ -170,6 +186,11 @@ def _is_source_file(path: Path) -> bool:
     if ext in BINARY_EXTENSIONS:
         return False
     return ext in EXTENSION_LANG_MAP
+
+
+def _is_pdn_target(path: Path) -> bool:
+    """True for source files AND plain documentation files."""
+    return _is_source_file(path) or path.suffix.lower() in _DOC_EXTENSIONS
 
 
 def _build_identifier_patterns(
@@ -226,7 +247,7 @@ def scan_repository_for_pdn(
             continue
         if item.is_dir() or not item.is_file():
             continue
-        if not _is_source_file(item):
+        if not _is_pdn_target(item):
             continue
         try:
             if item.stat().st_size > MAX_FILE_BYTES:
@@ -245,20 +266,30 @@ def scan_repository_for_pdn(
                     line_num += 1
                     if line_num > MAX_LINES_PER_FILE:
                         break
-                    code = stripper.code_portion(line)
-                    if not code.strip():
-                        continue
+                    code_part, comment_part = stripper.scan_line(line)
                     for pdn_type, regex in compiled:
-                        m = regex.search(code)
-                        if m:
-                            findings.append(
-                                PDnFinding(
-                                    pdn_type=pdn_type,
-                                    file_path=rel_path,
-                                    line_number=line_num,
-                                    matched_identifier=m.group(0),
+                        if code_part.strip():
+                            m = regex.search(code_part)
+                            if m:
+                                findings.append(
+                                    PDnFinding(
+                                        pdn_type=pdn_type,
+                                        file_path=rel_path,
+                                        line_number=line_num,
+                                        matched_identifier=m.group(0),
+                                    )
                                 )
-                            )
+                        if comment_part.strip():
+                            m = regex.search(comment_part)
+                            if m:
+                                findings.append(
+                                    PDnFinding(
+                                        pdn_type=pdn_type,
+                                        file_path=rel_path,
+                                        line_number=line_num,
+                                        matched_identifier=m.group(0),
+                                    )
+                                )
             files_scanned += 1
         except OSError:
             continue

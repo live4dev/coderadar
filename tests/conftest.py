@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from app.db.base import Base
@@ -16,6 +17,7 @@ def db_engine():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
 
     @event.listens_for(engine, "connect")
