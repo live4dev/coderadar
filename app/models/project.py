@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.repository import Repository
+    from app.models.repository import ProjectRepository
 
 
 class ProjectTag(Base):
@@ -33,8 +33,8 @@ class Project(Base):
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
-    repositories: Mapped[list[Repository]] = relationship(
-        "Repository", back_populates="project", cascade="all, delete-orphan"
+    project_repositories: Mapped[list[ProjectRepository]] = relationship(
+        "ProjectRepository", back_populates="project", cascade="all, delete-orphan"
     )
     tags: Mapped[list[ProjectTag]] = relationship(
         "ProjectTag", back_populates="project", cascade="all, delete-orphan"

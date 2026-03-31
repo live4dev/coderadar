@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models import (
-    Scan, ScanStatus, Repository, Developer, DeveloperProfile, DeveloperIdentity,
+    Scan, ScanStatus, Repository, ProjectRepository, Developer, DeveloperProfile, DeveloperIdentity,
     Language, ScanLanguage, Module, Dependency,
     DeveloperContribution, DeveloperLanguageContribution, DeveloperModuleContribution,
     DeveloperDailyActivity, RepositoryDailyActivity,
@@ -50,7 +50,8 @@ def run_scan(scan_id: int, db: Session) -> None:
         logger.error("scan_not_found", scan_id=scan_id)
         return
 
-    repo: Repository = scan.repository
+    pr: ProjectRepository = scan.project_repository
+    repo: Repository = pr.repository
 
     scan.status = ScanStatus.running
     scan.started_at = datetime.now(timezone.utc)
@@ -64,11 +65,11 @@ def run_scan(scan_id: int, db: Session) -> None:
             repository_id=repo.id,
             repo_url=repo.url,
             provider_type=repo.provider_type.value,
-            project_name=repo.project.name,
-            repo_name=repo.name,
+            project_name=pr.project.name,
+            repo_name=pr.name,
             branch=branch_arg,
-            credentials_username=repo.credentials_username or "",
-            credentials_token=repo.credentials_token or "",
+            credentials_username=pr.credentials_username or "",
+            credentials_token=pr.credentials_token or "",
         )
         repo_path = clone_result.local_path
         scan.commit_sha = clone_result.commit_sha
@@ -139,17 +140,17 @@ def run_scan(scan_id: int, db: Session) -> None:
 
         # ── Stage 5: git analytics ─────────────────────────────────────────
         logger.info("stage_git_analytics")
-        overrides = _load_overrides(db, repo.project_id)
+        overrides = _load_overrides(db, pr.project_id)
         dev_stats = aggregate_contributions(repo_path, overrides)
 
-        _persist_developers(db, scan, repo.project_id, dev_stats, file_result.languages)
+        _persist_developers(db, scan, pr.project_id, pr.id, dev_stats, file_result.languages)
 
         # Aggregate repo-level daily commits from all developers
         repo_daily: dict[str, int] = defaultdict(int)
         for ds in dev_stats:
             for day_str, count in ds.daily_commits.items():
                 repo_daily[day_str] += count
-        _persist_repo_daily_activity(db, repo.id, repo_daily)
+        _persist_repo_daily_activity(db, pr.id, repo_daily)
 
         db.commit()
         _check_cancelled(scan, db)
@@ -295,6 +296,7 @@ def _persist_developers(
     db: Session,
     scan: Scan,
     project_id: int,
+    pr_id: int,
     dev_stats: list,
     languages: dict,
 ) -> None:
@@ -305,10 +307,9 @@ def _persist_developers(
         if lang:
             lang_id_map[name] = lang.id
 
-    # Ensure modules exist
+    # Ensure modules exist (keyed by project_repository_id)
     module_id_map: dict[str, int] = {}
-    repo_id = scan.repository_id
-    existing_modules = db.query(Module).filter_by(repository_id=repo_id).all()
+    existing_modules = db.query(Module).filter_by(project_repository_id=pr_id).all()
     for m in existing_modules:
         module_id_map[m.path] = m.id
 
@@ -402,7 +403,7 @@ def _persist_developers(
         for mod_path, stats in ds.module_stats.items():
             if mod_path not in module_id_map:
                 mod = Module(
-                    repository_id=repo_id,
+                    project_repository_id=pr_id,
                     path=mod_path,
                     name=mod_path.split("/")[-1] or mod_path,
                 )
@@ -421,11 +422,11 @@ def _persist_developers(
             ))
 
 
-def _persist_repo_daily_activity(db: Session, repo_id: int, daily_counts: dict[str, int]) -> None:
+def _persist_repo_daily_activity(db: Session, pr_id: int, daily_counts: dict[str, int]) -> None:
     from datetime import date as _date
     existing = {
         row.commit_date: row
-        for row in db.query(RepositoryDailyActivity).filter_by(repository_id=repo_id).all()
+        for row in db.query(RepositoryDailyActivity).filter_by(project_repository_id=pr_id).all()
     }
     for day_str, count in daily_counts.items():
         commit_date = _date.fromisoformat(day_str)
@@ -435,7 +436,7 @@ def _persist_repo_daily_activity(db: Session, repo_id: int, daily_counts: dict[s
                 row.commit_count = count
         else:
             db.add(RepositoryDailyActivity(
-                repository_id=repo_id,
+                project_repository_id=pr_id,
                 commit_date=commit_date,
                 commit_count=count,
             ))

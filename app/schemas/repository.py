@@ -46,7 +46,14 @@ class RepositoryCreate(BaseModel):
 
 
 class RepositoryOut(BaseModel):
+    """Serialises a ProjectRepository ORM object.
+
+    ``id`` is the ProjectRepository.id (the project-scoped handle used by all
+    sub-resource endpoints).  ``repository_id`` is the global Repository.id
+    (the deduplicated row keyed on URL).
+    """
     id: int
+    repository_id: int
     project_id: int
     name: str
     url: str
@@ -60,10 +67,24 @@ class RepositoryOut(BaseModel):
 
     @model_validator(mode="wrap")
     @classmethod
-    def _tags_from_orm(cls, data, handler):
-        if not isinstance(data, dict) and hasattr(data, "tags") and data.tags is not None:
-            d = {f: getattr(data, f) for f in ("id", "project_id", "name", "url", "provider_type", "default_branch", "last_commit_sha", "created_at")}
-            d["tags"] = [{"name": t.tag, "description": t.description, "date": t.created_at} for t in data.tags]
+    def _from_project_repository(cls, data, handler):
+        if not isinstance(data, dict) and hasattr(data, "repository"):
+            repo = data.repository
+            d = {
+                "id": data.id,
+                "repository_id": repo.id,
+                "project_id": data.project_id,
+                "name": data.name,
+                "url": repo.url,
+                "provider_type": repo.provider_type.value if hasattr(repo.provider_type, "value") else repo.provider_type,
+                "default_branch": data.default_branch,
+                "last_commit_sha": repo.last_commit_sha,
+                "created_at": data.created_at,
+                "tags": [
+                    {"name": t.tag, "description": t.description, "date": t.created_at}
+                    for t in (data.tags or [])
+                ],
+            }
             return handler(d)
         return handler(data)
 
@@ -83,6 +104,7 @@ class LatestScanOut(BaseModel):
 class RepositoryWithLatestScanOut(BaseModel):
     """Repository with optional latest completed scan summary."""
     id: int
+    repository_id: int
     project_id: int
     name: str
     url: str
@@ -105,4 +127,4 @@ class RepositoryUpdate(BaseModel):
 
 
 class ScanTrigger(BaseModel):
-    branch: str | None = None  # defaults to repository.default_branch
+    branch: str | None = None  # defaults to project_repository.default_branch

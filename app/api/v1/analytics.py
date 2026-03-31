@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import Project, Repository, Scan, ScanStatus, RepositoryDailyActivity
+from app.models import Project, Repository, ProjectRepository, Scan, ScanStatus, RepositoryDailyActivity
 from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat, SizeHistoryRepo, SizeHistoryResponse
@@ -17,9 +17,9 @@ from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapR
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-def _latest_scan_per_repo(db: Session, repo_ids: list[int]) -> dict[int, Scan]:
-    """Return repo_id -> latest completed scan (with languages eager-loaded)."""
-    if not repo_ids:
+def _latest_scan_per_pr(db: Session, pr_ids: list[int]) -> dict[int, Scan]:
+    """Return project_repository_id -> latest completed scan (with languages eager-loaded)."""
+    if not pr_ids:
         return {}
     latest = (
         db.query(Scan)
@@ -27,17 +27,17 @@ def _latest_scan_per_repo(db: Session, repo_ids: list[int]) -> dict[int, Scan]:
             joinedload(Scan.languages).joinedload(ScanLanguage.language)
         )
         .filter(
-            Scan.repository_id.in_(repo_ids),
+            Scan.project_repository_id.in_(pr_ids),
             Scan.status == ScanStatus.completed,
         )
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .all()
     )
-    scan_by_repo = {}
+    scan_by_pr: dict[int, Scan] = {}
     for s in latest:
-        if s.repository_id not in scan_by_repo:
-            scan_by_repo[s.repository_id] = s
-    return scan_by_repo
+        if s.project_repository_id not in scan_by_pr:
+            scan_by_pr[s.project_repository_id] = s
+    return scan_by_pr
 
 
 @router.get("/treemap", response_model=TreemapNode)
@@ -67,31 +67,27 @@ def get_treemap(
     if not projects:
         return TreemapNode(name="root", value=0, type="root", children=[])
 
-    repo_ids = []
-    repo_to_project: dict[int, int] = {}
+    pr_ids = []
+    pr_to_project: dict[int, int] = {}
     for p in projects:
-        repos = (
-            db.query(Repository)
-            .filter_by(project_id=p.id)
-            .all()
-        )
-        for r in repos:
-            repo_ids.append(r.id)
-            repo_to_project[r.id] = p.id
+        prs = db.query(ProjectRepository).filter_by(project_id=p.id).all()
+        for pr in prs:
+            pr_ids.append(pr.id)
+            pr_to_project[pr.id] = p.id
 
-    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+    scan_by_pr = _latest_scan_per_pr(db, pr_ids)
 
-    # project_id -> list of (repo_name, repo_id, value)
+    # project_id -> list of (repo_name, pr_id, value)
     proj_children: dict[int, list[tuple[str, int, int]]] = {p.id: [] for p in projects}
     proj_value: dict[int, int] = {p.id: 0 for p in projects}
 
-    repos = (
-        db.query(Repository.id, Repository.name, Repository.project_id)
-        .filter(Repository.id.in_(repo_ids))
+    prs_q = (
+        db.query(ProjectRepository.id, ProjectRepository.name, ProjectRepository.project_id)
+        .filter(ProjectRepository.id.in_(pr_ids))
         .all()
     )
-    for r in repos:
-        scan = scan_by_repo.get(r.id)
+    for r in prs_q:
+        scan = scan_by_pr.get(r.id)
         if scan is None:
             continue
         val = (scan.total_loc or 0) if metric == "loc" else (scan.total_files or 0)
@@ -142,55 +138,55 @@ def get_activity_tree(
     if not projects:
         return TreemapNode(name="root", value=0, type="root", children=[])
 
-    repo_ids: list[int] = []
+    pr_ids: list[int] = []
     for p in projects:
-        repos = db.query(Repository).filter_by(project_id=p.id).all()
-        for r in repos:
-            repo_ids.append(r.id)
+        prs = db.query(ProjectRepository).filter_by(project_id=p.id).all()
+        for pr in prs:
+            pr_ids.append(pr.id)
 
     if metric == "commits":
         period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
         cutoff = date.today() - timedelta(days=period_days[period])
         rows = (
             db.query(
-                RepositoryDailyActivity.repository_id,
+                RepositoryDailyActivity.project_repository_id,
                 func.sum(RepositoryDailyActivity.commit_count).label("total"),
             )
             .filter(
-                RepositoryDailyActivity.repository_id.in_(repo_ids),
+                RepositoryDailyActivity.project_repository_id.in_(pr_ids),
                 RepositoryDailyActivity.commit_date >= cutoff,
             )
-            .group_by(RepositoryDailyActivity.repository_id)
+            .group_by(RepositoryDailyActivity.project_repository_id)
             .all()
         )
-        repo_activity: dict[int, int] = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
+        pr_activity: dict[int, int] = {r.project_repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
     else:
-        scan_by_repo = _latest_scan_per_repo(db, repo_ids)
-        if not scan_by_repo:
+        scan_by_pr = _latest_scan_per_pr(db, pr_ids)
+        if not scan_by_pr:
             return TreemapNode(name="root", value=0, type="root", children=[])
-        scan_ids = {scan.id for scan in scan_by_repo.values()}
+        scan_ids = {scan.id for scan in scan_by_pr.values()}
         rows = (
             db.query(
-                Scan.repository_id,
+                Scan.project_repository_id,
                 func.sum(DeveloperContribution.insertions).label("total"),
             )
             .join(DeveloperContribution, DeveloperContribution.scan_id == Scan.id)
             .filter(Scan.id.in_(list(scan_ids)))
-            .group_by(Scan.repository_id)
+            .group_by(Scan.project_repository_id)
             .all()
         )
-        repo_activity = {r.repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
+        pr_activity = {r.project_repository_id: r.total or 0 for r in rows if (r.total or 0) > 0}
 
-    repos_q = (
-        db.query(Repository.id, Repository.name, Repository.project_id)
-        .filter(Repository.id.in_(repo_ids))
+    prs_q = (
+        db.query(ProjectRepository.id, ProjectRepository.name, ProjectRepository.project_id)
+        .filter(ProjectRepository.id.in_(pr_ids))
         .all()
     )
     proj_repo_nodes: dict[int, list[TreemapNode]] = {p.id: [] for p in projects}
     proj_values: dict[int, int] = {p.id: 0 for p in projects}
 
-    for r in repos_q:
-        val = repo_activity.get(r.id, 0)
+    for r in prs_q:
+        val = pr_activity.get(r.id, 0)
         if val == 0:
             continue
         proj_repo_nodes[r.project_id].append(
@@ -230,16 +226,21 @@ def get_tech_map(
             raise HTTPException(404, "Project not found")
 
     project_map = {p.id: p.name for p in projects}
-    repo_ids = []
-    repos_by_id: dict[int, Repository] = {}
+    pr_ids = []
+    prs_by_id: dict[int, ProjectRepository] = {}
 
     for p in projects:
-        repos = db.query(Repository).filter_by(project_id=p.id).all()
-        for r in repos:
-            repo_ids.append(r.id)
-            repos_by_id[r.id] = r
+        prs = (
+            db.query(ProjectRepository)
+            .options(joinedload(ProjectRepository.repository))
+            .filter_by(project_id=p.id)
+            .all()
+        )
+        for pr in prs:
+            pr_ids.append(pr.id)
+            prs_by_id[pr.id] = pr
 
-    scan_by_repo = _latest_scan_per_repo(db, repo_ids)
+    scan_by_pr = _latest_scan_per_pr(db, pr_ids)
 
     def _load(col: str | None) -> list[str]:
         if not col:
@@ -250,24 +251,23 @@ def get_tech_map(
             return []
 
     repo_entries: list[TechMapRepo] = []
-    # language name -> accumulated stats across all repos
     lang_stats: dict[str, dict] = defaultdict(lambda: {"total_loc": 0, "total_files": 0, "repo_count": 0})
     fw_counts: dict[str, int] = defaultdict(int)
     ci_counts: dict[str, int] = defaultdict(int)
     pm_counts: dict[str, int] = defaultdict(int)
     infra_counts: dict[str, int] = defaultdict(int)
 
-    for rid, repo in repos_by_id.items():
-        scan = scan_by_repo.get(rid)
+    for pr_id, pr in prs_by_id.items():
+        scan = scan_by_pr.get(pr_id)
         if scan is None:
             continue
 
+        repo = pr.repository
         frameworks = _load(scan.frameworks_json)
         package_managers = _load(scan.package_managers_json)
         infra_tools = _load(scan.infra_tools_json)
         linters = _load(scan.linters_json)
 
-        # Accumulate per-language LOC and files from ScanLanguage records
         repo_languages: list[RepoLanguage] = []
         for sl in sorted(scan.languages, key=lambda s: -(s.loc or 0)):
             lang_name = sl.language.name
@@ -291,10 +291,10 @@ def get_tech_map(
             infra_counts[it] += 1
 
         repo_entries.append(TechMapRepo(
-            repo_id=rid,
-            repo_name=repo.name,
-            project_id=repo.project_id,
-            project_name=project_map.get(repo.project_id, ""),
+            repo_id=pr_id,
+            repo_name=pr.name,
+            project_id=pr.project_id,
+            project_name=project_map.get(pr.project_id, ""),
             primary_language=scan.primary_language,
             project_type=scan.project_type.value if scan.project_type else None,
             languages=repo_languages,
@@ -357,21 +357,21 @@ def get_size_history(
     months.reverse()
     month_ends.reverse()
 
-    # Resolve repo_ids (optionally filtered by project)
+    # Resolve pr_ids (optionally filtered by project)
     if project_id is not None:
         project = db.query(Project).filter_by(id=project_id).first()
         if not project:
             raise HTTPException(404, "Project not found")
-        allowed_repos = db.query(Repository.id).filter_by(project_id=project_id).all()
-        allowed_repo_ids: set[int] | None = {r.id for r in allowed_repos}
+        allowed_prs = db.query(ProjectRepository.id).filter_by(project_id=project_id).all()
+        allowed_pr_ids: set[int] | None = {r.id for r in allowed_prs}
     else:
-        allowed_repo_ids = None
+        allowed_pr_ids = None
 
     # Load all completed scans with their metric values
     q = (
         db.query(
             Scan.id,
-            Scan.repository_id,
+            Scan.project_repository_id,
             Scan.created_at,
             Scan.total_loc,
             Scan.total_files,
@@ -379,12 +379,12 @@ def get_size_history(
         )
         .filter(Scan.status == ScanStatus.completed)
     )
-    if allowed_repo_ids is not None:
-        q = q.filter(Scan.repository_id.in_(allowed_repo_ids))
-    rows = q.order_by(Scan.repository_id, Scan.created_at).all()
+    if allowed_pr_ids is not None:
+        q = q.filter(Scan.project_repository_id.in_(allowed_pr_ids))
+    rows = q.order_by(Scan.project_repository_id, Scan.created_at).all()
 
-    # Group scans by repo
-    repo_scans: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    # Group scans by pr
+    pr_scans: dict[int, list[tuple[date, int]]] = defaultdict(list)
     for row in rows:
         created = row.created_at.date() if isinstance(row.created_at, datetime) else row.created_at
         if metric == "loc":
@@ -393,23 +393,23 @@ def get_size_history(
             val = row.total_files or 0
         else:
             val = row.size_bytes or 0
-        repo_scans[row.repository_id].append((created, val))
+        pr_scans[row.project_repository_id].append((created, val))
 
-    if not repo_scans:
+    if not pr_scans:
         return SizeHistoryResponse(months=months, repos=[], totals=[0] * len(months))
 
-    # Load repo metadata (name + project_id)
-    repo_ids = list(repo_scans.keys())
-    repo_rows = (
-        db.query(Repository.id, Repository.name, Repository.project_id)
-        .filter(Repository.id.in_(repo_ids))
+    # Load pr metadata (name + project_id)
+    pr_ids = list(pr_scans.keys())
+    pr_rows = (
+        db.query(ProjectRepository.id, ProjectRepository.name, ProjectRepository.project_id)
+        .filter(ProjectRepository.id.in_(pr_ids))
         .all()
     )
-    repo_meta: dict[int, tuple[str, int]] = {r.id: (r.name, r.project_id) for r in repo_rows}
+    pr_meta: dict[int, tuple[str, int]] = {r.id: (r.name, r.project_id) for r in pr_rows}
 
-    # Compute per-repo monthly values
-    repo_monthly: dict[int, list[int | None]] = {}
-    for repo_id, scans in repo_scans.items():
+    # Compute per-pr monthly values
+    pr_monthly: dict[int, list[int | None]] = {}
+    for pr_id, scans in pr_scans.items():
         values: list[int | None] = []
         for end_date in month_ends:
             val = None
@@ -418,16 +418,15 @@ def get_size_history(
                     val = scan_val
                     break
             values.append(val)
-        repo_monthly[repo_id] = values
+        pr_monthly[pr_id] = values
 
     if group_by == "project":
-        # Aggregate repos into project-level series
         project_rows = db.query(Project.id, Project.name).all()
         project_names: dict[int, str] = {p.id: p.name for p in project_rows}
 
         proj_monthly: dict[int, list[int]] = defaultdict(lambda: [0] * len(months))
-        for repo_id, values in repo_monthly.items():
-            _, proj_id = repo_meta.get(repo_id, ("", 0))
+        for pr_id, values in pr_monthly.items():
+            _, proj_id = pr_meta.get(pr_id, ("", 0))
             for i, v in enumerate(values):
                 if v is not None:
                     proj_monthly[proj_id][i] += v
@@ -437,7 +436,6 @@ def get_size_history(
         for proj_id, values in sorted(proj_monthly.items()):
             for i, v in enumerate(values):
                 totals[i] += v
-            # Convert zeros back to None for months before any scan existed
             result_repos.append(SizeHistoryRepo(
                 id=proj_id,
                 name=project_names.get(proj_id, str(proj_id)),
@@ -446,15 +444,15 @@ def get_size_history(
     else:
         result_repos = []
         totals = [0] * len(months)
-        for repo_id in sorted(repo_monthly.keys()):
-            values = repo_monthly[repo_id]
+        for pr_id in sorted(pr_monthly.keys()):
+            values = pr_monthly[pr_id]
             for i, v in enumerate(values):
                 if v is not None:
                     totals[i] += v
-            repo_name, _ = repo_meta.get(repo_id, (str(repo_id), 0))
+            pr_name, _ = pr_meta.get(pr_id, (str(pr_id), 0))
             result_repos.append(SizeHistoryRepo(
-                id=repo_id,
-                name=repo_name,
+                id=pr_id,
+                name=pr_name,
                 values=values,
             ))
 

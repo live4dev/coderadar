@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models import (
-    Repository, Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding,
+    Repository, ProjectRepository, Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding,
     DeveloperContribution, DeveloperProfile,
 )
 from app.models.scan import ScanStatus
@@ -34,8 +34,8 @@ def _get_scan_or_404(scan_id: int, db: Session) -> Scan:
 def get_scan_queue(db: Session = Depends(get_db)):
     """Return all pending and running scans across all repositories."""
     rows = (
-        db.query(Scan, Repository.name.label("repository_name"))
-        .join(Repository, Scan.repository_id == Repository.id)
+        db.query(Scan, ProjectRepository.name.label("repository_name"))
+        .join(ProjectRepository, Scan.project_repository_id == ProjectRepository.id)
         .filter(Scan.status.in_([ScanStatus.pending, ScanStatus.running]))
         .order_by(Scan.created_at.asc())
         .all()
@@ -43,7 +43,7 @@ def get_scan_queue(db: Session = Depends(get_db)):
     return [
         ScanQueueItemOut(
             id=scan.id,
-            repository_id=scan.repository_id,
+            repository_id=scan.project_repository_id,
             repository_name=repo_name,
             status=scan.status,
             branch=scan.branch,
@@ -160,8 +160,9 @@ def get_scan_risks(scan_id: int, db: Session = Depends(get_db)):
 @router.get("/{scan_id}/personal-data", response_model=PersonalDataOut)
 def get_scan_personal_data(scan_id: int, db: Session = Depends(get_db)):
     scan = _get_scan_or_404(scan_id, db)
-    repo = db.get(Repository, scan.repository_id)
-    ref = scan.commit_sha or scan.branch or (repo.default_branch if repo else None) or "HEAD"
+    pr = db.get(ProjectRepository, scan.project_repository_id)
+    repo = pr.repository if pr else None
+    ref = scan.commit_sha or scan.branch or (pr.default_branch if pr else None) or "HEAD"
     provider = repo.provider_type.value if repo else ""
     repo_url = repo.url if repo else ""
 

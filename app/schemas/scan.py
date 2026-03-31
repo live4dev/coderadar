@@ -1,11 +1,11 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ScanOut(BaseModel):
     id: int
-    repository_id: int
+    repository_id: int  # maps to project_repository_id (the project-scoped handle)
     status: str
     branch: str
     commit_sha: str | None
@@ -21,6 +21,30 @@ class ScanOut(BaseModel):
     cancel_requested: bool = False
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _map_project_repository_id(cls, data, handler):
+        if not isinstance(data, dict) and hasattr(data, "project_repository_id"):
+            d = {
+                "id": data.id,
+                "repository_id": data.project_repository_id,
+                "status": data.status.value if hasattr(data.status, "value") else data.status,
+                "branch": data.branch,
+                "commit_sha": data.commit_sha,
+                "error_message": data.error_message,
+                "total_files": data.total_files,
+                "total_loc": data.total_loc,
+                "size_bytes": data.size_bytes,
+                "project_type": data.project_type.value if data.project_type and hasattr(data.project_type, "value") else data.project_type,
+                "primary_language": data.primary_language,
+                "started_at": data.started_at,
+                "completed_at": data.completed_at,
+                "created_at": data.created_at,
+                "cancel_requested": data.cancel_requested,
+            }
+            return handler(d)
+        return handler(data)
 
 
 class ScanQueueItemOut(BaseModel):

@@ -7,7 +7,7 @@ import enum
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.repository import Repository
+    from app.models.repository import ProjectRepository
     from app.models.scan_language import ScanLanguage
     from app.models.dependency import Dependency
     from app.models.scan_score import ScanScore
@@ -39,8 +39,8 @@ class Scan(Base):
     __tablename__ = "scans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repository_id: Mapped[int] = mapped_column(
-        ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
+    project_repository_id: Mapped[int] = mapped_column(
+        ForeignKey("project_repositories.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus), default=ScanStatus.pending, nullable=False
@@ -84,7 +84,7 @@ class Scan(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    repository: Mapped[Repository] = relationship("Repository", back_populates="scans")
+    project_repository: Mapped[ProjectRepository] = relationship("ProjectRepository", back_populates="scans")
     languages: Mapped[list[ScanLanguage]] = relationship(
         "ScanLanguage", back_populates="scan", cascade="all, delete-orphan"
     )
