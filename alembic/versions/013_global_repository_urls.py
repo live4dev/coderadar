@@ -30,7 +30,6 @@ def upgrade() -> None:
         sa.Column("credentials_token", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
-        sa.UniqueConstraint("project_id", "repository_id", name="uq_project_repositories_project_repo"),
     )
     op.create_index("ix_project_repositories_project_id", "project_repositories", ["project_id"])
     op.create_index("ix_project_repositories_repository_id", "project_repositories", ["repository_id"])

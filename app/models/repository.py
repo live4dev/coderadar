@@ -80,7 +80,6 @@ class Repository(Base):
 class ProjectRepository(Base):
     """Associates a Repository (URL) with a Project, carrying project-specific metadata."""
     __tablename__ = "project_repositories"
-    __table_args__ = (UniqueConstraint("project_id", "repository_id", name="uq_project_repositories_project_repo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(

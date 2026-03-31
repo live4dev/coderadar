@@ -60,13 +60,6 @@ def create_repository(body: RepositoryCreate, db: Session = Depends(get_db)):
         # Update provider_type if caller specifies a different one
         repo.provider_type = provider
 
-    # Check this project doesn't already link to this repo URL
-    existing_pr = db.query(ProjectRepository).filter_by(
-        project_id=body.project_id, repository_id=repo.id
-    ).first()
-    if existing_pr:
-        raise HTTPException(409, "This project already has a repository with that URL")
-
     pr = ProjectRepository(
         project_id=body.project_id,
         repository_id=repo.id,
@@ -145,13 +138,6 @@ def update_repository(repo_id: int, body: RepositoryUpdate, db: Session = Depend
             new_repo = Repository(url=body.url, provider_type=provider)
             db.add(new_repo)
             db.flush()
-        else:
-            # Check no duplicate ProjectRepository for this project + new repo
-            conflict = db.query(ProjectRepository).filter_by(
-                project_id=pr.project_id, repository_id=new_repo.id
-            ).filter(ProjectRepository.id != pr.id).first()
-            if conflict:
-                raise HTTPException(409, "This project already has a repository with that URL")
         pr.repository_id = new_repo.id
         pr.repository = new_repo
         # Clean up old repository if it has no remaining project_repositories
