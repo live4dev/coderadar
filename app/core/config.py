@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # for packages whose licence was not found in local files.
     enable_license_api_enrichment: bool = True
 
+    # Yandex Metrika counter ID (optional; leave empty to disable tracking)
+    yandex_metrika_id: str = ""
+
     @property
     def repos_cache_path(self) -> Path:
         p = Path(self.repos_cache_dir)
