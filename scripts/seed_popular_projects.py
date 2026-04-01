@@ -73,6 +73,25 @@ PROJECTS: dict[str, list[str]] = {
         "kubernetes/dashboard",
         "helm/helm",
     ],
+    "wemake-services": [
+        "wemake-services/wemake-python-styleguide",
+        "wemake-services/wemake-django-template",
+        "wemake-services/wemake-vue-template",
+        "wemake-services/wemake-python-package",
+        "wemake-services/wemake-frontend-styleguide",
+        "wemake-services/django-split-settings",
+        "wemake-services/django-test-migrations",
+        "wemake-services/flake8-eradicate",
+        "wemake-services/flake8-broken-line",
+        "wemake-services/coverage-conditional-plugin",
+        "wemake-services/pytest-modified-env",
+        "wemake-services/asyncio-redis-rate-limit",
+        "wemake-services/dump-env",
+        "wemake-services/dotenv-linter",
+        "wemake-services/docker-image-size-limit",
+        "wemake-services/caddy-gen",
+        "wemake-services/django-pre-deploy-checks",
+    ],
 }
 
 

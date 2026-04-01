@@ -3,13 +3,15 @@
 Import repositories from GitHub into CodeRadar.
 
 Use --org to import an organisation's repositories, --user to import a specific
-user's repositories, or omit both to import the token owner's repositories.
+user's repositories, --url to derive the org/user from a GitHub URL, or omit
+all three to import the token owner's repositories (requires --token).
 Each org / user becomes a single CodeRadar project. Already-imported repos are
 skipped (idempotent).
 
 Usage:
     python scripts/import_github.py \\
-        --token <personal-access-token> \\
+        [--token <personal-access-token>] \\
+        [--url https://github.com/wemake-services]  # import by GitHub URL
         [--org <github-org>]            # import org repos
         [--user <github-user>]          # import user repos
         [--skip-archived]               # skip archived repositories
@@ -20,6 +22,8 @@ Usage:
 
 Credentials can also be supplied via environment variables:
     GITHUB_TOKEN
+
+Note: without --token, GitHub's unauthenticated rate limit applies (60 req/hr).
 """
 import sys
 import os
@@ -33,8 +37,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.session import SessionLocal
-from app.models import Project, Repository, Scan, ScanStatus, ProviderType
-from app.services.scanning.queue import enqueue
+from app.models import Project, Repository, ProjectRepository, Scan, ScanStatus, ProviderType
 from app.core.logging import setup_logging, get_logger
 
 logger = get_logger(__name__)
@@ -49,10 +52,34 @@ PER_PAGE = 100
 
 def _make_session(token: str) -> requests.Session:
     s = requests.Session()
-    s.headers["Authorization"] = f"Bearer {token}"
+    if token:
+        s.headers["Authorization"] = f"Bearer {token}"
     s.headers["Accept"] = "application/vnd.github+json"
     s.headers["X-GitHub-Api-Version"] = "2022-11-28"
     return s
+
+
+def _parse_github_url(url: str) -> tuple[str, str]:
+    """Parse a GitHub org/user URL and return (kind, name).
+
+    Accepts forms like:
+      https://github.com/wemake-services
+      https://github.com/wemake-services/
+      github.com/wemake-services
+
+    Returns ('org', 'wemake-services') — callers must probe the API to
+    distinguish orgs from users, so we return 'org' as the default kind
+    and fall back to 'user' on a 404.
+    """
+    # Strip scheme and trailing slashes, then take the first path segment
+    cleaned = re.sub(r"^https?://", "", url).strip("/")
+    parts = cleaned.split("/")
+    if len(parts) < 2 or parts[0].lower() != "github.com":
+        raise ValueError(f"Cannot parse GitHub URL: {url!r}. Expected https://github.com/<org-or-user>")
+    name = parts[1]
+    if not name:
+        raise ValueError(f"No org/user name found in URL: {url!r}")
+    return name
 
 
 def _paginate(session: requests.Session, url: str, params: dict | None = None) -> Iterator[dict]:
@@ -88,6 +115,23 @@ def _get_repos(session: requests.Session, org: str, user: str) -> tuple[str, Ite
     return owner, _paginate(session, f"{GITHUB_API}/user/repos", {"affiliation": "owner"})
 
 
+def _get_repos_by_name(session: requests.Session, name: str) -> tuple[str, Iterator[dict]]:
+    """Probe GitHub to determine if *name* is an org or a user, then return repos.
+
+    Tries the orgs endpoint first; falls back to users if the org returns 404.
+    """
+    resp = session.get(f"{GITHUB_API}/orgs/{name}", timeout=30)
+    if resp.status_code == 200:
+        return name, _paginate(session, f"{GITHUB_API}/orgs/{name}/repos", {"type": "all"})
+    if resp.status_code == 404:
+        # Not an org — try as a user
+        resp2 = session.get(f"{GITHUB_API}/users/{name}", timeout=30)
+        resp2.raise_for_status()
+        return name, _paginate(session, f"{GITHUB_API}/users/{name}/repos", {"type": "all"})
+    resp.raise_for_status()
+    raise RuntimeError("Unreachable")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -99,7 +143,12 @@ def main() -> None:
     parser.add_argument(
         "--token",
         default=os.environ.get("GITHUB_TOKEN", ""),
-        help="GitHub Personal Access Token",
+        help="GitHub Personal Access Token (optional for public repos; unauthenticated rate limit: 60 req/hr)",
+    )
+    parser.add_argument(
+        "--url",
+        default="",
+        help="GitHub org or user URL, e.g. https://github.com/wemake-services",
     )
     parser.add_argument("--org", default="", help="Import repos from this GitHub organisation")
     parser.add_argument("--user", default="", help="Import repos from this GitHub user")
@@ -122,16 +171,21 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing to the database")
     args = parser.parse_args()
 
-    if not args.token:
-        print("Error: --token is required (or set GITHUB_TOKEN)")
+    if not args.token and not args.url and not args.org and not args.user:
+        print("Error: --token is required when importing the authenticated user's own repos.")
+        print("To import a public org or user without a token, use --url https://github.com/<name>")
         sys.exit(1)
 
     setup_logging()
     session = _make_session(args.token)
 
     try:
-        project_name, repo_iter = _get_repos(session, args.org, args.user)
-    except requests.HTTPError as e:
+        if args.url:
+            name = _parse_github_url(args.url)
+            project_name, repo_iter = _get_repos_by_name(session, name)
+        else:
+            project_name, repo_iter = _get_repos(session, args.org, args.user)
+    except (requests.HTTPError, ValueError) as e:
         print(f"Error fetching repositories from GitHub: {e}")
         sys.exit(1)
 
@@ -144,7 +198,7 @@ def main() -> None:
         if not cr_project:
             cr_project = Project(
                 name=project_name,
-                description=f"Imported from GitHub ({args.org or args.user or 'owner'})",
+                description=f"Imported from GitHub ({args.url or args.org or args.user or 'owner'})",
             )
             db.add(cr_project)
             db.commit()
@@ -183,40 +237,50 @@ def main() -> None:
                 total_new += 1
                 continue
 
-            existing = db.query(Repository).filter_by(
-                project_id=cr_project.id, url=clone_url
+            # Find or create the global Repository (deduplicated by URL)
+            repository = db.query(Repository).filter_by(url=clone_url).first()
+            if not repository:
+                repository = Repository(
+                    url=clone_url,
+                    provider_type=ProviderType.github,
+                )
+                db.add(repository)
+                db.commit()
+                db.refresh(repository)
+
+            # Find or create the project-scoped ProjectRepository
+            pr = db.query(ProjectRepository).filter_by(
+                project_id=cr_project.id,
+                repository_id=repository.id,
             ).first()
 
-            if existing:
+            if pr:
                 print(f"  [EXISTS]  {name:<40} (skipped)")
                 total_skipped += 1
                 continue
 
-            repo_record = Repository(
+            pr = ProjectRepository(
                 project_id=cr_project.id,
+                repository_id=repository.id,
                 name=name,
-                url=clone_url,
-                provider_type=ProviderType.github,
                 default_branch=default_branch,
                 credentials_username=None,
-                credentials_token=args.token,
+                credentials_token=args.token or None,
             )
-            db.add(repo_record)
+            db.add(pr)
             db.commit()
-            db.refresh(repo_record)
+            db.refresh(pr)
             print(f"  [NEW]     {name:<40} {clone_url}")
             total_new += 1
 
             if args.scan:
                 scan = Scan(
-                    repository_id=repo_record.id,
+                    project_repository_id=pr.id,
                     branch=default_branch,
                     status=ScanStatus.pending,
                 )
                 db.add(scan)
                 db.commit()
-                db.refresh(scan)
-                enqueue(scan.id)
                 total_scans += 1
 
     except requests.HTTPError as e:
