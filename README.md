@@ -313,6 +313,53 @@ curl -X POST http://localhost:8000/api/v1/developers/identity-overrides \
   }'
 ```
 
+## Deploy with Docker
+
+Pre-built images are published to GitHub Container Registry on every push to `master` and on version tags.
+
+### Pull and run
+
+```bash
+# Download the compose file
+curl -O https://raw.githubusercontent.com/live4dev/coderadar/master/deploy/docker-compose.yml
+
+# Configure credentials
+cp .env.example .env   # or create .env manually
+# Edit .env:
+#   BITBUCKET_USERNAME=...
+#   BITBUCKET_APP_PASSWORD=...
+#   GITLAB_TOKEN=...
+
+# Start (pulls image automatically)
+docker compose -f deploy/docker-compose.yml --env-file .env up -d
+```
+
+The API will be available at `http://localhost:8000`. The worker starts automatically once the API is healthy.
+
+### Pin to a specific release
+
+Edit `deploy/docker-compose.yml` and replace `master` with a version tag:
+
+```yaml
+image: ghcr.io/live4dev/coderadar:v1.2.3
+```
+
+### Update to the latest image
+
+```bash
+docker compose -f deploy/docker-compose.yml pull
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+### Persistent data
+
+Two named volumes are created automatically:
+
+| Volume | Path in container | Contents |
+| ------ | ----------------- | -------- |
+| `coderadar_db` | `/data/db` | SQLite database |
+| `coderadar_repos` | `/data/repos_cache` | Cloned repository cache |
+
 ## Run tests
 
 ```bash
