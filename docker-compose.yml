@@ -25,6 +25,25 @@ services:
       retries: 3
       start_period: 15s
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m app.worker
+    volumes:
+      - coderadar_db:/data/db
+      - coderadar_repos:/data/repos_cache
+    environment:
+      DATABASE_URL: "sqlite:////data/db/coderadar.db"
+      REPOS_CACHE_DIR: "/data/repos_cache"
+      BITBUCKET_USERNAME: "${BITBUCKET_USERNAME:-}"
+      BITBUCKET_APP_PASSWORD: "${BITBUCKET_APP_PASSWORD:-}"
+      GITLAB_TOKEN: "${GITLAB_TOKEN:-}"
+    depends_on:
+      coderadar:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   coderadar_db:
   coderadar_repos:
