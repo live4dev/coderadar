@@ -19,3 +19,4 @@
 - [ ] Describe code quality metrics
 - [ ] Project/repository risk matrix
 - [ ] Script for import from BB/gitlab
+- [ ] Delete project with repositories

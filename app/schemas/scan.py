@@ -97,10 +97,20 @@ class DependencyOut(BaseModel):
     dep_type: str
     manifest_file: str | None
     ecosystem: str | None
+    package_manager: str | None = None
     license_spdx: str | None = None
     license_raw: str | None = None
     license_risk: str = "unknown"
     is_direct: bool = True
+    # Extended license fields
+    license_expression: str | None = None
+    license_confidence: str = "unknown"
+    license_source: str | None = None
+    license_notes: str | None = None
+    # Discovery metadata
+    discovery_mode: str = "unknown"
+    is_optional_dependency: bool = False
+    is_private: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -114,6 +124,11 @@ class DependencyLicenseSummaryOut(BaseModel):
     risky_count: int
     safe_count: int
     risk_score: int  # 0–100: percentage of risky deps
+    # License classification breakdown
+    permissive_count: int = 0
+    weak_copyleft_count: int = 0
+    strong_copyleft_count: int = 0
+    by_classification: dict[str, int] = {}
 
 
 class ScanScoreOut(BaseModel):
@@ -245,3 +260,60 @@ class LicenseReportEntry(BaseModel):
 
 class LicenseReportOut(BaseModel):
     entries: list[LicenseReportEntry]
+
+
+# ── Per-scan detailed license inventory report ────────────────────────────────
+
+class ScanLicensePackageOut(BaseModel):
+    name: str
+    version: str | None
+    ecosystem: str | None
+    package_manager: str | None
+    dependency_type: str
+    is_direct: bool
+    is_transitive: bool
+    is_dev_dependency: bool
+    is_optional_dependency: bool
+    is_private: bool
+    source_manifest: str | None
+    discovery_mode: str
+    license_raw: str | None
+    license_normalized: str | None
+    license_expression: str | None
+    license_confidence: str
+    license_source: str | None
+    license_notes: str | None
+    license_classification: str
+    license_risk: str
+
+
+class ScanLicenseSummaryOut(BaseModel):
+    total_packages: int
+    direct_packages: int
+    transitive_packages: int
+    licensed_packages: int
+    unknown_license_packages: int
+    by_license: dict[str, int]
+    by_classification: dict[str, int]
+    risky_count: int
+    safe_count: int
+
+
+class ScanLicenseProblemOut(BaseModel):
+    type: str
+    package: str
+    ecosystem: str | None
+    details: str
+
+
+class ScanLicenseReportOut(BaseModel):
+    repository: str
+    scan_id: int
+    scan_time_utc: str
+    scanner_version: str
+    commit_sha: str | None
+    branch: str
+    ecosystems: list[str]
+    packages: list[ScanLicensePackageOut]
+    summary: ScanLicenseSummaryOut
+    problems: list[ScanLicenseProblemOut]

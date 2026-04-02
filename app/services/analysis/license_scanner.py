@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
@@ -12,10 +12,14 @@ import urllib.parse
 
 @dataclass
 class LicenseInfo:
-    spdx: str | None       # normalised SPDX id, or None
-    raw: str | None        # verbatim string from manifest
-    risk: str              # "safe" | "risky" | "unknown"
+    spdx: str | None        # normalised SPDX id, or None
+    raw: str | None         # verbatim string from manifest
+    risk: str               # "safe" | "risky" | "unknown"
     is_direct: bool = True
+    expression: str | None = None    # SPDX compound expression (MIT OR Apache-2.0)
+    confidence: str = "unknown"      # "high" | "medium" | "low" | "unknown"
+    source: str | None = None        # where the data came from
+    notes: str | None = None         # ambiguity / dual-license notes
 
 
 # ── SPDX normalisation ────────────────────────────────────────────────────────
@@ -23,12 +27,15 @@ class LicenseInfo:
 _SPDX_MAP: dict[str, str] = {
     "mit": "MIT",
     "mit license": "MIT",
+    "mit/x11": "MIT",
+    "the mit license": "MIT",
     "apache 2.0": "Apache-2.0",
     "apache-2.0": "Apache-2.0",
     "apache 2": "Apache-2.0",
     "apache license 2.0": "Apache-2.0",
     "apache license, version 2.0": "Apache-2.0",
     "apache software license": "Apache-2.0",
+    "apache software license 2.0": "Apache-2.0",
     "bsd": "BSD-2-Clause",
     "bsd-2-clause": "BSD-2-Clause",
     "bsd 2-clause": "BSD-2-Clause",
@@ -36,21 +43,32 @@ _SPDX_MAP: dict[str, str] = {
     "bsd-3-clause": "BSD-3-Clause",
     "bsd 3-clause": "BSD-3-Clause",
     "new bsd": "BSD-3-Clause",
+    "revised bsd": "BSD-3-Clause",
+    "bsd-4-clause": "BSD-4-Clause",
     "isc": "ISC",
+    "isc license": "ISC",
     "isc license (iscl)": "ISC",
     "mpl-2.0": "MPL-2.0",
     "mpl 2.0": "MPL-2.0",
     "mozilla public license 2.0": "MPL-2.0",
+    "mozilla public license 2.0 (mpl 2.0)": "MPL-2.0",
     "cc0-1.0": "CC0-1.0",
     "cc0": "CC0-1.0",
+    "creative commons zero v1.0 universal": "CC0-1.0",
     "unlicense": "Unlicense",
+    "the unlicense": "Unlicense",
     "the unlicense (unlicense)": "Unlicense",
     "wtfpl": "WTFPL",
+    "do what the f*ck you want to public license": "WTFPL",
     "0bsd": "0BSD",
     "python software foundation license": "PSF-2.0",
     "psf-2.0": "PSF-2.0",
+    "python-2.0": "Python-2.0",
     "zlib": "Zlib",
     "zlib/libpng": "Zlib",
+    "zlib license": "Zlib",
+    "artistic-2.0": "Artistic-2.0",
+    "artistic license 2.0": "Artistic-2.0",
     "gpl-2.0": "GPL-2.0-only",
     "gpl-2.0-only": "GPL-2.0-only",
     "gpl-2.0-or-later": "GPL-2.0-or-later",
@@ -67,6 +85,7 @@ _SPDX_MAP: dict[str, str] = {
     "agpl-3.0-only": "AGPL-3.0-only",
     "agpl-3.0-or-later": "AGPL-3.0-or-later",
     "agpl 3.0": "AGPL-3.0-only",
+    "gnu affero general public license v3": "AGPL-3.0-only",
     "lgpl-2.0": "LGPL-2.0-only",
     "lgpl-2.1": "LGPL-2.1-only",
     "lgpl-2.1-only": "LGPL-2.1-only",
@@ -79,6 +98,14 @@ _SPDX_MAP: dict[str, str] = {
     "gnu lesser general public license v3 (lgplv3)": "LGPL-3.0-only",
     "eupl-1.1": "EUPL-1.1",
     "eupl-1.2": "EUPL-1.2",
+    "european union public licence 1.2": "EUPL-1.2",
+    "cddl-1.0": "CDDL-1.0",
+    "eclipse public license 1.0": "EPL-1.0",
+    "epl-1.0": "EPL-1.0",
+    "eclipse public license 2.0": "EPL-2.0",
+    "epl-2.0": "EPL-2.0",
+    "osl-3.0": "OSL-3.0",
+    "open software license 3.0": "OSL-3.0",
 }
 
 _RISKY_PREFIXES = (
@@ -88,7 +115,7 @@ _RISKY_PREFIXES = (
 _SAFE_IDS: frozenset[str] = frozenset({
     "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC",
     "CC0-1.0", "Unlicense", "WTFPL", "MPL-2.0", "PSF-2.0",
-    "0BSD", "Zlib", "Python-2.0",
+    "0BSD", "Zlib", "Python-2.0", "Artistic-2.0", "EPL-1.0", "EPL-2.0",
 })
 
 # Trove classifier → SPDX (used by pip and PyPI API)
@@ -107,9 +134,13 @@ _TROVE_TO_SPDX: dict[str, str] = {
     "license :: osi approved :: gnu lesser general public license v2 (lgplv2)": "LGPL-2.0-only",
     "license :: osi approved :: gnu lesser general public license v2 or later (lgplv2+)": "LGPL-2.1-or-later",
     "license :: osi approved :: gnu lesser general public license v3 (lgplv3)": "LGPL-3.0-only",
+    "license :: osi approved :: artistic license": "Artistic-2.0",
+    "license :: osi approved :: eclipse public license 1.0 (epl-1.0)": "EPL-1.0",
+    "license :: osi approved :: eclipse public license 2.0 (epl-2.0)": "EPL-2.0",
+    "license :: other/proprietary license": None,
 }
 
-# LICENSE file content patterns for Go vendor detection
+# LICENSE file content patterns for heuristic detection
 _LICENSE_PATTERNS = [
     (re.compile(r"permission is hereby granted.*?without restriction", re.I | re.S), "MIT"),
     (re.compile(r"apache license.*?version 2\.0", re.I | re.S), "Apache-2.0"),
@@ -121,20 +152,50 @@ _LICENSE_PATTERNS = [
     (re.compile(r"bsd 2-clause|redistribution and use.*?two", re.I | re.S), "BSD-2-Clause"),
     (re.compile(r"isc license|permission to use.*?isc", re.I | re.S), "ISC"),
     (re.compile(r"mozilla public license.*?2\.0", re.I | re.S), "MPL-2.0"),
+    (re.compile(r"creative commons.*?zero", re.I | re.S), "CC0-1.0"),
 ]
 
+# Detect SPDX compound expressions (MIT OR Apache-2.0, GPL-2.0-only AND MIT, etc.)
+_SPDX_COMPOUND_RE = re.compile(r'\bOR\b|\bAND\b|\bWITH\b', re.ASCII)
 
-def _normalise_spdx(raw: str | None) -> str | None:
+
+def _normalise_spdx(raw: str | None) -> tuple[str | None, str | None, str | None]:
+    """
+    Returns (spdx_id, expression, notes).
+    - spdx_id: primary/canonical SPDX identifier or None
+    - expression: full SPDX expression when compound (MIT OR Apache-2.0), else None
+    - notes: notes about ambiguity
+    """
     if not raw:
-        return None
+        return None, None, None
     cleaned = raw.strip().strip("()")
+
+    # Check for known compound expressions
+    if _SPDX_COMPOUND_RE.search(cleaned):
+        # It's a compound expression; try to extract the primary (first) license
+        parts = re.split(r'\s+(?:OR|AND|WITH)\s+', cleaned, maxsplit=1)
+        primary_raw = parts[0].strip().strip("()")
+        spdx = _SPDX_MAP.get(primary_raw.lower()) or (primary_raw if re.match(r'^[A-Za-z0-9.\-+]+$', primary_raw) else None)
+        notes = "Dual/compound license expression preserved"
+        return spdx, cleaned, notes
+
     looked_up = _SPDX_MAP.get(cleaned.lower())
     if looked_up:
-        return looked_up
+        return looked_up, None, None
+
+    # Ambiguous short strings
+    if cleaned.lower() in ("bsd", "gpl", "lgpl"):
+        return None, None, f"Ambiguous license string '{cleaned}' — exact version not determinable"
+
+    # References to external files
+    if re.match(r'^see\s+license', cleaned, re.I) or re.match(r'^license\s+in\s+', cleaned, re.I):
+        return None, None, f"License defined in file: {cleaned}"
+
     # Accept tokens that look like a valid SPDX id (no spaces)
-    if re.match(r'^[A-Za-z0-9\.\-\+]+$', cleaned):
-        return cleaned
-    return None
+    if re.match(r'^[A-Za-z0-9.\-+]+$', cleaned):
+        return cleaned, None, None
+
+    return None, None, None
 
 
 def _classify_risk(spdx: str | None) -> str:
@@ -153,6 +214,32 @@ def _classify_license_file(text: str) -> str | None:
         if pattern.search(sample):
             return spdx
     return None
+
+
+def _make_license_info(
+    raw: str | None,
+    is_direct: bool = True,
+    confidence: str = "medium",
+    source: str | None = None,
+    extra_notes: str | None = None,
+) -> LicenseInfo:
+    spdx, expression, notes = _normalise_spdx(raw)
+    if extra_notes:
+        notes = f"{notes}; {extra_notes}" if notes else extra_notes
+    # Downgrade confidence when ambiguous
+    if notes and "ambiguous" in notes.lower():
+        confidence = "low"
+    risk = _classify_risk(spdx)
+    return LicenseInfo(
+        spdx=spdx,
+        raw=raw,
+        risk=risk,
+        is_direct=is_direct,
+        expression=expression,
+        confidence=confidence,
+        source=source,
+        notes=notes,
+    )
 
 
 # ── Offline: npm via package-lock.json ───────────────────────────────────────
@@ -189,26 +276,27 @@ def _scan_npm(root: Path) -> dict[tuple[str, str], LicenseInfo]:
             if "node_modules/" in name:
                 name = name.rsplit("node_modules/", 1)[-1]
             raw = pkg_info.get("license") or pkg_info.get("licence")
-            if isinstance(raw, dict):
+            if isinstance(raw, list):
+                raw = " OR ".join(str(r.get("type", r) if isinstance(r, dict) else r) for r in raw)
+            elif isinstance(raw, dict):
                 raw = raw.get("type") or raw.get("name")
             raw = str(raw) if raw is not None else None
-            spdx = _normalise_spdx(raw)
-            risk = _classify_risk(spdx)
-            result[(name, "npm")] = LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=name in direct_names)
+            lic = _make_license_info(raw, is_direct=name in direct_names, confidence="high", source="lockfile")
+            result[(name, "npm")] = lic
     else:
         def _walk_v1(deps_dict: dict, is_top: bool = True) -> None:
             for name, info in deps_dict.items():
                 if not isinstance(info, dict):
                     continue
                 raw = info.get("license") or info.get("licence")
-                if isinstance(raw, dict):
+                if isinstance(raw, list):
+                    raw = " OR ".join(str(r.get("type", r) if isinstance(r, dict) else r) for r in raw)
+                elif isinstance(raw, dict):
                     raw = raw.get("type") or raw.get("name")
                 raw = str(raw) if raw is not None else None
-                spdx = _normalise_spdx(raw)
-                risk = _classify_risk(spdx)
                 is_direct = name in direct_names if is_top else False
                 if (name, "npm") not in result:
-                    result[(name, "npm")] = LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=is_direct)
+                    result[(name, "npm")] = _make_license_info(raw, is_direct=is_direct, confidence="high", source="lockfile")
                 nested = info.get("dependencies", {})
                 if nested:
                     _walk_v1(nested, is_top=False)
@@ -250,11 +338,13 @@ def _scan_pyproject(root: Path) -> dict[tuple[str, str], LicenseInfo]:
             spdx_val = _TROVE_TO_SPDX.get(classifier.strip().lower())
             if spdx_val:
                 risk = _classify_risk(spdx_val)
-                return {(name, "pip"): LicenseInfo(spdx=spdx_val, raw=classifier, risk=risk, is_direct=True)}
+                return {(name, "pip"): LicenseInfo(
+                    spdx=spdx_val, raw=classifier, risk=risk, is_direct=True,
+                    confidence="high", source="manifest",
+                )}
 
-    spdx = _normalise_spdx(raw)
-    risk = _classify_risk(spdx)
-    return {(name, "pip"): LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=True)}
+    lic = _make_license_info(raw, confidence="medium", source="manifest")
+    return {(name, "pip"): lic}
 
 
 # ── Offline: pip via .venv dist-info METADATA ─────────────────────────────────
@@ -288,10 +378,15 @@ def _scan_pip_dist_info(root: Path) -> dict[tuple[str, str], LicenseInfo]:
                 spdx = _TROVE_TO_SPDX.get(c.lower())
                 if spdx:
                     break
-            if not spdx:
-                spdx = _normalise_spdx(raw_license)
-            risk = _classify_risk(spdx)
-            result[(name, "pip")] = LicenseInfo(spdx=spdx, raw=raw_license, risk=risk, is_direct=True)
+            if spdx:
+                risk = _classify_risk(spdx)
+                result[(name, "pip")] = LicenseInfo(
+                    spdx=spdx, raw=raw_license, risk=risk, is_direct=True,
+                    confidence="high", source="dist_info",
+                )
+            else:
+                lic = _make_license_info(raw_license, confidence="high", source="dist_info")
+                result[(name, "pip")] = lic
     return result
 
 
@@ -316,9 +411,8 @@ def _scan_cargo_vendor(root: Path) -> dict[tuple[str, str], LicenseInfo]:
         raw = pkg.get("license")
         if not name:
             continue
-        spdx = _normalise_spdx(raw)
-        risk = _classify_risk(spdx)
-        result[(name, "cargo")] = LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=True)
+        lic = _make_license_info(raw, confidence="high", source="vendor_manifest")
+        result[(name, "cargo")] = lic
     return result
 
 
@@ -347,7 +441,10 @@ def _scan_go_vendor(root: Path) -> dict[tuple[str, str], LicenseInfo]:
                         text = lic_file.read_text(encoding="utf-8", errors="replace")
                         spdx = _classify_license_file(text)
                         risk = _classify_risk(spdx)
-                        result[(module_path, "go")] = LicenseInfo(spdx=spdx, raw=None, risk=risk, is_direct=True)
+                        result[(module_path, "go")] = LicenseInfo(
+                            spdx=spdx, raw=None, risk=risk, is_direct=True,
+                            confidence="medium", source="license_file",
+                        )
                     except Exception:
                         pass
                     break
@@ -375,9 +472,8 @@ def _scan_maven_poms(root: Path) -> dict[tuple[str, str], LicenseInfo]:
                 continue
             name = f"{group}:{artifact}"
             raw = tree.findtext(".//m:licenses/m:license/m:name", namespaces=ns)
-            spdx = _normalise_spdx(raw)
-            risk = _classify_risk(spdx)
-            result[(name, "maven")] = LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=True)
+            lic = _make_license_info(raw, confidence="medium", source="manifest")
+            result[(name, "maven")] = lic
         except Exception:
             continue
     return result
@@ -396,11 +492,42 @@ def _scan_ruby_vendor(root: Path) -> dict[tuple[str, str], LicenseInfo]:
                 continue
             name = name_match.group(1)
             raw = lic_match.group(1) if lic_match else None
-            spdx = _normalise_spdx(raw)
-            risk = _classify_risk(spdx)
-            result[(name, "bundler")] = LicenseInfo(spdx=spdx, raw=raw, risk=risk, is_direct=True)
+            lic = _make_license_info(raw, confidence="medium", source="vendor_gemspec")
+            result[(name, "bundler")] = lic
         except Exception:
             continue
+    return result
+
+
+# ── Offline: Gemfile.lock ─────────────────────────────────────────────────────
+
+def _scan_gemfile_lock(root: Path) -> dict[tuple[str, str], LicenseInfo]:
+    """Scan Gemfile.lock for gem names/versions (no license in lockfile — placeholder)."""
+    lock = root / "Gemfile.lock"
+    if not lock.exists():
+        return {}
+    result: dict[tuple[str, str], LicenseInfo] = {}
+    try:
+        in_specs = False
+        for line in lock.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped == "GEM":
+                in_specs = False
+            elif stripped == "specs:":
+                in_specs = True
+            elif in_specs and line.startswith("    ") and not line.startswith("      "):
+                # top-level gem entry: "    name (version)"
+                m = re.match(r"\s{4}(\S+)\s+\(([^)]+)\)", line)
+                if m:
+                    name = m.group(1)
+                    # License not available in Gemfile.lock — mark as unknown
+                    result[(name, "bundler")] = LicenseInfo(
+                        spdx=None, raw=None, risk="unknown",
+                        confidence="unknown", source="lockfile",
+                        notes="License not recorded in Gemfile.lock; requires API enrichment",
+                    )
+    except Exception:
+        pass
     return result
 
 
@@ -435,9 +562,15 @@ def _fetch_pypi_license(name: str, version: str | None) -> LicenseInfo | None:
         if spdx:
             break
     if not spdx and raw:
-        spdx = _normalise_spdx(raw)
+        spdx, expression, notes = _normalise_spdx(raw)
+    else:
+        expression, notes = None, None
     risk = _classify_risk(spdx)
-    return LicenseInfo(spdx=spdx, raw=raw or None, risk=risk)
+    return LicenseInfo(
+        spdx=spdx, raw=raw or None, risk=risk,
+        expression=expression, notes=notes,
+        confidence="high", source="api_enrichment",
+    )
 
 
 def _fetch_crates_license(name: str, version: str | None) -> LicenseInfo | None:
@@ -445,9 +578,13 @@ def _fetch_crates_license(name: str, version: str | None) -> LicenseInfo | None:
     if not data:
         return None
     raw = (data.get("crate") or {}).get("license")
-    spdx = _normalise_spdx(raw)
+    spdx, expression, notes = _normalise_spdx(raw)
     risk = _classify_risk(spdx)
-    return LicenseInfo(spdx=spdx, raw=raw, risk=risk)
+    return LicenseInfo(
+        spdx=spdx, raw=raw, risk=risk,
+        expression=expression, notes=notes,
+        confidence="high", source="api_enrichment",
+    )
 
 
 def _fetch_rubygems_license(name: str, version: str | None) -> LicenseInfo | None:
@@ -455,10 +592,21 @@ def _fetch_rubygems_license(name: str, version: str | None) -> LicenseInfo | Non
     if not data:
         return None
     licenses = data.get("licenses") or []
-    raw = licenses[0] if licenses else None
-    spdx = _normalise_spdx(raw)
+    if len(licenses) > 1:
+        raw = " OR ".join(licenses)
+        notes = "Dual-licensed gem"
+    else:
+        raw = licenses[0] if licenses else None
+        notes = None
+    spdx, expression, _ = _normalise_spdx(raw)
+    if notes and expression is None and len(licenses) > 1:
+        expression = raw
     risk = _classify_risk(spdx)
-    return LicenseInfo(spdx=spdx, raw=raw, risk=risk)
+    return LicenseInfo(
+        spdx=spdx, raw=raw, risk=risk,
+        expression=expression, notes=notes,
+        confidence="high", source="api_enrichment",
+    )
 
 
 def _fetch_maven_license(name: str, version: str | None) -> LicenseInfo | None:
@@ -476,11 +624,35 @@ def _fetch_maven_license(name: str, version: str | None) -> LicenseInfo | None:
             tree = ET.fromstring(resp.read())
             ns = {"m": "http://maven.apache.org/POM/4.0.0"}
             raw = tree.findtext(".//m:licenses/m:license/m:name", namespaces=ns)
-            spdx = _normalise_spdx(raw)
+            spdx, expression, notes = _normalise_spdx(raw)
             risk = _classify_risk(spdx)
-            return LicenseInfo(spdx=spdx, raw=raw, risk=risk)
+            return LicenseInfo(
+                spdx=spdx, raw=raw, risk=risk,
+                expression=expression, notes=notes,
+                confidence="high", source="api_enrichment",
+            )
     except Exception:
         return None
+
+
+def _fetch_npm_registry_license(name: str, version: str | None) -> LicenseInfo | None:
+    data = _http_get_json(f"https://registry.npmjs.org/{urllib.parse.quote(name, safe='@/')}")
+    if not data:
+        return None
+    raw = (data.get("license") or
+           (data.get("latest", {}) or {}).get("license") or
+           (data.get("dist-tags", {}).get("latest") and
+            data.get("versions", {}).get(data["dist-tags"]["latest"], {}).get("license")))
+    if isinstance(raw, dict):
+        raw = raw.get("type") or raw.get("name")
+    raw = str(raw) if raw else None
+    spdx, expression, notes = _normalise_spdx(raw)
+    risk = _classify_risk(spdx)
+    return LicenseInfo(
+        spdx=spdx, raw=raw, risk=risk,
+        expression=expression, notes=notes,
+        confidence="high", source="api_enrichment",
+    )
 
 
 _ECOSYSTEM_FETCHERS: dict[str, object] = {
@@ -488,6 +660,7 @@ _ECOSYSTEM_FETCHERS: dict[str, object] = {
     "cargo":   _fetch_crates_license,
     "bundler": _fetch_rubygems_license,
     "maven":   _fetch_maven_license,
+    "npm":     _fetch_npm_registry_license,
 }
 
 
@@ -498,28 +671,39 @@ def scan_licenses(
     deps: list,  # list[ParsedDependency] — avoids circular import
 ) -> dict[tuple[str, str], LicenseInfo]:
     """
-    Hybrid licence scanner. Tries offline sources first, then falls back to
-    registry APIs for any dependency whose licence is still unknown.
-    deps is the list produced by dependency_parser.parse_all().
+    Hybrid licence scanner. Tries offline sources first (lockfiles, dist-info,
+    vendor directories), then falls back to registry APIs for any dependency
+    whose licence is still unknown.
     """
     from app.core.config import settings
 
     result: dict[tuple[str, str], LicenseInfo] = {}
 
-    # ── Offline sources ──────────────────────────────────────────────────────
-    result.update(_scan_npm(repo_root))
-    result.update(_scan_pip_dist_info(repo_root))
+    # ── Offline sources (higher-quality sources override lower-quality) ───────
+    # Start with manifest-level (lowest quality)
     result.update(_scan_pyproject(repo_root))
+    result.update(_scan_maven_poms(repo_root))
+
+    # Lockfile-level / vendor sources (higher quality — override manifests)
+    result.update(_scan_gemfile_lock(repo_root))
+    result.update(_scan_ruby_vendor(repo_root))
+    result.update(_scan_npm(repo_root))
     result.update(_scan_cargo_vendor(repo_root))
     result.update(_scan_go_vendor(repo_root))
-    result.update(_scan_maven_poms(repo_root))
-    result.update(_scan_ruby_vendor(repo_root))
+
+    # Installed dist-info (highest offline quality — override everything)
+    result.update(_scan_pip_dist_info(repo_root))
 
     # ── Fill placeholders for deps not yet found ─────────────────────────────
     for dep in deps:
         key = (dep.name, dep.ecosystem)
         if key not in result:
-            result[key] = LicenseInfo(spdx=None, raw=None, risk="unknown", is_direct=True)
+            is_priv = getattr(dep, "is_private", False)
+            notes = "Private/internal package" if is_priv else None
+            result[key] = LicenseInfo(
+                spdx=None, raw=None, risk="unknown",
+                confidence="unknown", notes=notes,
+            )
 
     # ── Registry API fallback ────────────────────────────────────────────────
     if settings.enable_license_api_enrichment:
@@ -527,6 +711,7 @@ def scan_licenses(
             dep for dep in deps
             if result[(dep.name, dep.ecosystem)].risk == "unknown"
             and dep.ecosystem in _ECOSYSTEM_FETCHERS
+            and not getattr(dep, "is_private", False)
         ]
         if unknown_deps:
             with ThreadPoolExecutor(max_workers=6) as pool:

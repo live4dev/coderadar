@@ -124,10 +124,18 @@ def run_scan(scan_id: int, db: Session) -> None:
                 dep_type=d.dep_type,
                 manifest_file=d.manifest_file,
                 ecosystem=d.ecosystem,
+                package_manager=d.package_manager,
                 license_spdx=lic.spdx if lic else None,
                 license_raw=lic.raw if lic else None,
                 license_risk=lic.risk if lic else "unknown",
-                is_direct=lic.is_direct if lic else True,
+                is_direct=lic.is_direct if lic else d.is_direct,
+                license_expression=lic.expression if lic else None,
+                license_confidence=lic.confidence if lic else "unknown",
+                license_source=lic.source if lic else None,
+                license_notes=lic.notes if lic else None,
+                discovery_mode=d.discovery_mode,
+                is_optional_dependency=d.is_optional,
+                is_private=d.is_private,
             ))
         db.commit()
         _check_cancelled(scan, db)

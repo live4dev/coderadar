@@ -1,0 +1,26 @@
+{
+    "_readme": ["This file is @generated automatically"],
+    "content-hash": "abc123",
+    "packages": [
+        {
+            "name": "laravel/framework",
+            "version": "v10.20.0",
+            "description": "The Laravel Framework.",
+            "license": ["MIT"]
+        },
+        {
+            "name": "symfony/console",
+            "version": "v6.3.4",
+            "description": "Eases the creation of beautiful and testable command line interfaces",
+            "license": ["MIT"]
+        }
+    ],
+    "packages-dev": [
+        {
+            "name": "phpunit/phpunit",
+            "version": "10.3.2",
+            "description": "The PHP Unit Testing framework.",
+            "license": ["BSD-3-Clause"]
+        }
+    ]
+}

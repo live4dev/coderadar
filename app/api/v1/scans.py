@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -11,13 +12,15 @@ from app.models import (
 )
 from app.models.scan import ScanStatus
 from app.services.source_links import build_source_url
+from app.services.analysis.license_report import build_license_report, build_license_csv
+from app.services.analysis.license_report import _classify_license
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
     DependencyOut, DependencyLicenseSummaryOut, ScanScoreOut, ScanRiskOut,
     PersonalDataOut, PersonalDataCountOut, PersonalDataFindingOut,
     ScanCompareOut, ScanMetricsDiff, ScanLanguageDiff,
     ScanScoreDiff, ScanRiskDiff, ScanDeveloperDiff,
-    ScanQueueItemOut,
+    ScanQueueItemOut, ScanLicenseReportOut,
 )
 
 router = APIRouter(prefix="/scans", tags=["scans"])
@@ -117,6 +120,8 @@ def get_license_summary(scan_id: int, db: Session = Depends(get_db)):
             total=0, direct_count=0, transitive_count=0,
             license_counts={}, unknown_count=0, risky_count=0,
             safe_count=0, risk_score=0,
+            permissive_count=0, weak_copyleft_count=0,
+            strong_copyleft_count=0, by_classification={},
         )
     total = len(rows)
     direct_count = sum(1 for r in rows if r.is_direct)
@@ -124,9 +129,12 @@ def get_license_summary(scan_id: int, db: Session = Depends(get_db)):
     safe_count = sum(1 for r in rows if r.license_risk == "safe")
     unknown_count = total - risky_count - safe_count
     license_counts: dict[str, int] = {}
+    by_classification: dict[str, int] = {"permissive": 0, "weak_copyleft": 0, "strong_copyleft": 0, "unknown": 0}
     for r in rows:
         key = r.license_spdx or "unknown"
         license_counts[key] = license_counts.get(key, 0) + 1
+        cls = _classify_license(r.license_spdx)
+        by_classification[cls] = by_classification.get(cls, 0) + 1
     risk_score = min(100, round(risky_count / max(total, 1) * 100))
     return DependencyLicenseSummaryOut(
         total=total,
@@ -137,6 +145,36 @@ def get_license_summary(scan_id: int, db: Session = Depends(get_db)):
         risky_count=risky_count,
         safe_count=safe_count,
         risk_score=risk_score,
+        permissive_count=by_classification.get("permissive", 0),
+        weak_copyleft_count=by_classification.get("weak_copyleft", 0),
+        strong_copyleft_count=by_classification.get("strong_copyleft", 0),
+        by_classification=by_classification,
+    )
+
+
+@router.get("/{scan_id}/license-report", response_model=ScanLicenseReportOut)
+def get_license_report(scan_id: int, db: Session = Depends(get_db)):
+    """Return a full normalized license inventory report for this scan."""
+    scan = _get_scan_or_404(scan_id, db)
+    pr = db.get(ProjectRepository, scan.project_repository_id)
+    repo_name = pr.name if pr else f"repository-{scan.project_repository_id}"
+    deps = db.query(Dependency).filter_by(scan_id=scan_id).all()
+    return build_license_report(scan, deps, repo_name)
+
+
+@router.get("/{scan_id}/license-report.csv")
+def get_license_report_csv(scan_id: int, db: Session = Depends(get_db)):
+    """Return a CSV export of the license inventory for this scan."""
+    scan = _get_scan_or_404(scan_id, db)
+    pr = db.get(ProjectRepository, scan.project_repository_id)
+    repo_name = pr.name if pr else f"repository-{scan.project_repository_id}"
+    deps = db.query(Dependency).filter_by(scan_id=scan_id).all()
+    csv_content = build_license_csv(deps)
+    filename = f"license-report-scan-{scan_id}.csv"
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
