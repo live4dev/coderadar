@@ -10,7 +10,7 @@ let _allScans = [];
 let _offset = 0;
 let _hasMore = true;
 let _loading = false;
-const _filters = { project: '', repository: '', status: 'pending' };
+const _filters = { project: '', repository: '', status: 'running' };
 const _sort = { by: 'id', order: 'desc' };
 let _scrollObserver = null;
 let _filterDebounce = null;
@@ -29,7 +29,7 @@ export async function renderScansQueue() {
   const qp = new URLSearchParams(location.search);
   _filters.project = qp.get('project') || '';
   _filters.repository = qp.get('repository') || '';
-  _filters.status = qp.has('status') ? (qp.get('status') || '') : 'pending';
+  _filters.status = qp.has('status') ? (qp.get('status') || '') : 'running';
   _sort.by = qp.get('sort_by') || 'id';
   _sort.order = qp.get('sort_order') || 'desc';
   stopQueueRefresh();
