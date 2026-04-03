@@ -25,15 +25,29 @@ export async function renderScansQueue() {
   _hasMore = true;
   _loading = false;
   _expandedRows.clear();
-  _filters.project = '';
-  _filters.repository = '';
-  _filters.status = 'pending';
-  _sort.by = 'id';
-  _sort.order = 'desc';
+  // Read initial filter/sort state from URL query params
+  const qp = new URLSearchParams(location.search);
+  _filters.project = qp.get('project') || '';
+  _filters.repository = qp.get('repository') || '';
+  _filters.status = qp.has('status') ? (qp.get('status') || '') : 'pending';
+  _sort.by = qp.get('sort_by') || 'id';
+  _sort.order = qp.get('sort_order') || 'desc';
   stopQueueRefresh();
   updateNav();
+  _syncUrl();
   await _loadMore();
   _startRefreshIfNeeded();
+}
+
+function _syncUrl() {
+  const qp = new URLSearchParams();
+  if (_filters.project) qp.set('project', _filters.project);
+  if (_filters.repository) qp.set('repository', _filters.repository);
+  if (_filters.status) qp.set('status', _filters.status);
+  if (_sort.by !== 'id') qp.set('sort_by', _sort.by);
+  if (_sort.order !== 'desc') qp.set('sort_order', _sort.order);
+  const qs = qp.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
 }
 
 function _buildUrl(offset, limit) {
@@ -231,6 +245,7 @@ function _resetAndReload() {
   _offset = 0;
   _hasMore = true;
   _loading = false;
+  _syncUrl();
   _loadMore().then(() => _startRefreshIfNeeded());
 }
 
