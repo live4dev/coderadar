@@ -59,6 +59,7 @@ export async function renderAdminProjects() {
     <div class="page-subtitle">Create, edit and delete projects</div>
     <div style="margin-bottom:16px">
       <button class="btn btn-primary" onclick="adminProjNew()">+ New Project</button>
+      <button class="btn btn-outline" style="margin-left:8px" onclick="adminScanAllProjects()">Scan All Projects</button>
     </div>
     ${formHtml}
     ${tableHtml}
@@ -117,4 +118,17 @@ window.adminProjScanAll = async function(id) {
   const res = await fetch(API + '/projects/' + id + '/scan-all', { method: 'POST' });
   const scans = await res.json();
   alert(`${scans.length} scan(s) queued.`);
+};
+
+window.adminScanAllProjects = function() {
+  openConfirmDialog(
+    'Scan all projects?',
+    'This will queue a scan for every repository across all projects.',
+    'Scan All',
+    async () => {
+      const res = await fetch(API + '/repositories/scan-all', { method: 'POST' });
+      const scans = await res.json();
+      alert(`${scans.length} scan(s) queued.`);
+    }
+  );
 };
