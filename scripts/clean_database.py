@@ -67,6 +67,7 @@ def count_rows(db, table: str) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Clean CodeRadar database, keeping only projects and repositories.")
     parser.add_argument("--dry-run", action="store_true", help="Show row counts without deleting anything.")
+    parser.add_argument("--all", action="store_true", help="Also delete projects and repositories.")
     args = parser.parse_args()
 
     db = SessionLocal()
@@ -78,11 +79,17 @@ def main():
             total_rows += count
             print(f"  {table:<45} {count:>8} rows")
 
-        print()
-        print("Tables kept:")
-        for table in TABLES_KEPT:
-            count = count_rows(db, table)
-            print(f"  {table:<45} {count:>8} rows")
+        if args.all:
+            for table in TABLES_KEPT:
+                count = count_rows(db, table)
+                total_rows += count
+                print(f"  {table:<45} {count:>8} rows")
+        else:
+            print()
+            print("Tables kept:")
+            for table in TABLES_KEPT:
+                count = count_rows(db, table)
+                print(f"  {table:<45} {count:>8} rows")
 
         print()
         print(f"Total rows to delete: {total_rows}")
@@ -97,9 +104,10 @@ def main():
             return
 
         # Temporarily disable foreign key checks so we can delete in bulk
+        tables = TABLES_TO_CLEAN + (TABLES_KEPT if args.all else [])
         db.execute(text("PRAGMA foreign_keys=OFF"))
         try:
-            for table in TABLES_TO_CLEAN:
+            for table in tables:
                 db.execute(text(f"DELETE FROM {table}"))
                 print(f"  Cleared {table}")
             db.commit()
@@ -113,7 +121,10 @@ def main():
         db.execute(text("VACUUM"))
         db.commit()
 
-        print("\nDone. Projects and repositories data retained.")
+        if args.all:
+            print("\nDone. All data deleted.")
+        else:
+            print("\nDone. Projects and repositories data retained.")
 
     finally:
         db.close()
