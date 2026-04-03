@@ -121,10 +121,7 @@ def main():
         db.execute(text("VACUUM"))
         db.commit()
 
-        if args.all:
-            print("\nDone. All data deleted.")
-        else:
-            print("\nDone. Projects and repositories data retained.")
+        print("\nDone. Projects and repositories data retained.")
 
     finally:
         db.close()

@@ -33,6 +33,15 @@ class ScanCancelledError(Exception):
     pass
 
 
+def _append_log(scan: Scan, db: Session, message: str) -> None:
+    """Append a timestamped log entry to scan.scan_log (JSON array)."""
+    import json as _json
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), "msg": message}
+    existing = _json.loads(scan.scan_log) if scan.scan_log else []
+    existing.append(entry)
+    scan.scan_log = _json.dumps(existing)
+
+
 def _check_cancelled(scan: Scan, db: Session) -> None:
     """Refresh scan from DB and raise ScanCancelledError if cancellation was requested."""
     db.refresh(scan)
@@ -55,6 +64,7 @@ def run_scan(scan_id: int, db: Session) -> None:
 
     scan.status = ScanStatus.running
     scan.started_at = datetime.now(timezone.utc)
+    _append_log(scan, db, "Scan started")
     db.commit()
     logger.info("scan_started", scan_id=scan_id, repo=repo.url)
 
@@ -77,11 +87,13 @@ def run_scan(scan_id: int, db: Session) -> None:
         repo.last_commit_sha = clone_result.commit_sha
         if not scan.branch:
             scan.branch = clone_result.branch
+        _append_log(scan, db, f"Repository prepared (commit {scan.commit_sha or 'unknown'})")
         db.commit()
         logger.info("repo_prepared", commit_sha=scan.commit_sha)
         _check_cancelled(scan, db)
 
         # ── Stage 2: file analysis ─────────────────────────────────────────
+        _append_log(scan, db, "Stage 2: file analysis")
         logger.info("stage_file_analysis")
         file_result = analyze_files(repo_path)
         scan.total_files = file_result.total_files
@@ -95,10 +107,12 @@ def run_scan(scan_id: int, db: Session) -> None:
         scan.large_files_count = file_result.large_files_count
 
         _persist_languages(db, scan, file_result.languages)
+        _append_log(scan, db, f"File analysis done: {file_result.total_files} files, {file_result.total_loc} LOC")
         db.commit()
         _check_cancelled(scan, db)
 
         # ── Stage 3: stack & dependencies ─────────────────────────────────
+        _append_log(scan, db, "Stage 3: stack & dependency analysis")
         logger.info("stage_stack_analysis")
         stack = detect_stack(repo_path, file_result.languages)
         scan.project_type = stack.project_type  # type: ignore[assignment]
@@ -115,6 +129,7 @@ def run_scan(scan_id: int, db: Session) -> None:
 
         deps = parse_deps(repo_path)
         license_map = scan_licenses(repo_path, deps)
+        _append_log(scan, db, f"Stack detected: {stack.project_type}, {len(deps)} dependencies")
         for d in deps:
             lic = license_map.get((d.name, d.ecosystem))
             db.add(Dependency(
@@ -141,12 +156,14 @@ def run_scan(scan_id: int, db: Session) -> None:
         _check_cancelled(scan, db)
 
         # ── Stage 4: complexity ────────────────────────────────────────────
+        _append_log(scan, db, "Stage 4: complexity analysis")
         logger.info("stage_complexity")
         complexity = analyze_complexity(repo_path, file_result.languages)
 
         _check_cancelled(scan, db)
 
         # ── Stage 5: git analytics ─────────────────────────────────────────
+        _append_log(scan, db, "Stage 5: git analytics")
         logger.info("stage_git_analytics")
         overrides = _load_overrides(db, pr.project_id)
         dev_stats = aggregate_contributions(repo_path, overrides)
@@ -159,20 +176,24 @@ def run_scan(scan_id: int, db: Session) -> None:
             for day_str, count in ds.daily_commits.items():
                 repo_daily[day_str] += count
         _persist_repo_daily_activity(db, pr.id, repo_daily)
-
+        _append_log(scan, db, f"Git analytics done: {len(dev_stats)} contributors")
         db.commit()
         _check_cancelled(scan, db)
 
         # ── Stage 5b: git tags ─────────────────────────────────────────────
+        _append_log(scan, db, "Stage 5b: git tags")
         logger.info("stage_git_tags")
         try:
             _persist_git_tags(db, repo, repo_path)
+            _append_log(scan, db, "Git tags processed")
             db.commit()
         except Exception as tags_exc:
             logger.warning("git_tags_failed", scan_id=scan_id, error=str(tags_exc))
+            _append_log(scan, db, f"Git tags failed: {tags_exc}")
             db.rollback()
 
         # ── Stage 6: scoring & risks ───────────────────────────────────────
+        _append_log(scan, db, "Stage 6: scoring & risk detection")
         logger.info("stage_scoring")
         scorecard = compute_scorecard(file_result, stack, complexity, dev_stats)
         for domain_score in scorecard.all_domains():
@@ -183,6 +204,7 @@ def run_scan(scan_id: int, db: Session) -> None:
                 details=domain_score.details_json(),
             ))
 
+        _append_log(scan, db, "Stage 6b: personal data scan")
         logger.info("stage_risks")
         latest_commit_date = max(
             (d.last_commit_at for d in dev_stats if d.last_commit_at is not None),
@@ -215,20 +237,24 @@ def run_scan(scan_id: int, db: Session) -> None:
                     line_number=f.line_number,
                     matched_identifier=f.matched_identifier,
                 ))
+            _append_log(scan, db, f"Personal data scan done: {len(findings)} findings")
             db.commit()
         except Exception as pdn_exc:
             logger.warning("pdn_scan_failed", scan_id=scan_id, error=str(pdn_exc))
+            _append_log(scan, db, f"Personal data scan failed: {pdn_exc}")
             db.rollback()
 
         # ── Stage 7: complete ──────────────────────────────────────────────
         scan.status = ScanStatus.completed
         scan.completed_at = datetime.now(timezone.utc)
+        _append_log(scan, db, "Scan completed successfully")
         db.commit()
         logger.info("scan_completed", scan_id=scan_id)
 
     except ScanCancelledError:
         scan.status = ScanStatus.cancelled
         scan.completed_at = datetime.now(timezone.utc)
+        _append_log(scan, db, "Scan cancelled by user")
         db.commit()
         logger.info("scan_cancelled", scan_id=scan_id)
     except Exception as exc:
@@ -236,6 +262,7 @@ def run_scan(scan_id: int, db: Session) -> None:
         scan.status = ScanStatus.failed
         scan.error_message = str(exc)
         scan.completed_at = datetime.now(timezone.utc)
+        _append_log(scan, db, f"Scan failed: {exc}")
         db.commit()
 
 

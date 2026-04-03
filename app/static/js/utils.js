@@ -15,6 +15,13 @@ export function fmtDate(s) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+export function fmtDatetime(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
 export function fmtBytes(n) {
   if (n == null) return '—';
   if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';

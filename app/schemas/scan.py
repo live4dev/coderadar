@@ -51,11 +51,14 @@ class ScanQueueItemOut(BaseModel):
     id: int
     repository_id: int
     repository_name: str
+    project_name: str
     status: str
     branch: str
     created_at: datetime
     started_at: datetime | None
+    completed_at: datetime | None
     cancel_requested: bool
+    scan_log: list[dict] | None = None
 
     model_config = {"from_attributes": True}
 

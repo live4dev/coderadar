@@ -79,6 +79,9 @@ class Scan(Base):
     avg_file_loc: Mapped[float | None] = mapped_column(Float, nullable=True)
     large_files_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Scan log: JSON array of {"ts": "<ISO>", "msg": "<message>"} entries
+    scan_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

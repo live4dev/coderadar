@@ -16,7 +16,7 @@ import { renderAnalytics, showAnalyticsTab, treemapMetricChange, disposeTreemap,
 import { renderPersonalDataReport } from './views/personal-data-report.js';
 import { renderLicenseReport, licenseSort } from './views/license-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
-import { renderScansQueue, cancelScan, stopQueueRefresh } from './views/scans-queue.js';
+import { renderScansQueue, cancelScan, toggleScanLog, stopQueueRefresh, queueFilterProject, queueFilterRepository, queueFilterStatus, queueSort } from './views/scans-queue.js';
 import { setMain, showError } from './utils.js';
 
 async function render() {
@@ -71,6 +71,11 @@ window.licenseSort = licenseSort;
 window.triggerScan = triggerScan;
 window.showRepoTab = showRepoTab;
 window.cancelScan = cancelScan;
+window.toggleScanLog = toggleScanLog;
+window.queueFilterProject = queueFilterProject;
+window.queueFilterRepository = queueFilterRepository;
+window.queueFilterStatus = queueFilterStatus;
+window.queueSort = queueSort;
 window.render = render;
 window.state = state;
 window.closeConfirmDialog = closeConfirmDialog;

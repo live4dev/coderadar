@@ -2,13 +2,15 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, case
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
+import json as _json
+
 from app.models import (
     Repository, ProjectRepository, Scan, ScanLanguage, Dependency, ScanScore, ScanRisk, ScanPersonalDataFinding,
-    DeveloperContribution, DeveloperProfile,
+    DeveloperContribution, DeveloperProfile, Project,
 )
 from app.models.scan import ScanStatus
 from app.services.source_links import build_source_url
@@ -34,27 +36,68 @@ def _get_scan_or_404(scan_id: int, db: Session) -> Scan:
 
 
 @router.get("/queue", response_model=list[ScanQueueItemOut])
-def get_scan_queue(db: Session = Depends(get_db)):
-    """Return all pending and running scans across all repositories."""
-    rows = (
-        db.query(Scan, ProjectRepository.name.label("repository_name"))
+def get_scan_queue(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    sort_by: str = Query("id", description="id | queued | started"),
+    sort_order: str = Query("desc", description="asc | desc"),
+    project: str | None = Query(None),
+    repository: str | None = Query(None),
+    status: str | None = Query(None),
+):
+    """Return scans with pagination, filtering, and sorting."""
+    q = (
+        db.query(
+            Scan,
+            ProjectRepository.name.label("repository_name"),
+            Project.name.label("project_name"),
+        )
         .join(ProjectRepository, Scan.project_repository_id == ProjectRepository.id)
-        .filter(Scan.status.in_([ScanStatus.pending, ScanStatus.running]))
-        .order_by(Scan.created_at.asc())
-        .all()
+        .join(Project, ProjectRepository.project_id == Project.id)
     )
+
+    if project:
+        q = q.filter(Project.name.ilike(f"%{project}%"))
+    if repository:
+        q = q.filter(ProjectRepository.name.ilike(f"%{repository}%"))
+    if status:
+        q = q.filter(Scan.status == status)
+
+    _duration_expr = case(
+        (Scan.started_at.isnot(None),
+         func.julianday(func.coalesce(Scan.completed_at, func.datetime("now")))
+         - func.julianday(Scan.started_at)),
+        else_=None,
+    )
+    _sort_col = {
+        "id": Scan.id,
+        "queued": Scan.created_at,
+        "started": Scan.started_at,
+        "duration": _duration_expr,
+        "status": Scan.status,
+    }.get(sort_by, Scan.id)
+    if sort_order == "asc":
+        q = q.order_by(_sort_col.asc().nullslast())
+    else:
+        q = q.order_by(_sort_col.desc().nullsfirst())
+
+    rows = q.offset(offset).limit(limit).all()
     return [
         ScanQueueItemOut(
             id=scan.id,
             repository_id=scan.project_repository_id,
             repository_name=repo_name,
+            project_name=project_name,
             status=scan.status,
             branch=scan.branch,
             created_at=scan.created_at,
             started_at=scan.started_at,
+            completed_at=scan.completed_at,
             cancel_requested=scan.cancel_requested,
+            scan_log=_json.loads(scan.scan_log) if scan.scan_log else None,
         )
-        for scan, repo_name in rows
+        for scan, repo_name, project_name in rows
     ]
 
 
