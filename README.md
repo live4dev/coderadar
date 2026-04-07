@@ -102,6 +102,72 @@ curl http://localhost:8000/api/v1/scans/1/developers
 
 ## Scripts
 
+### Import from GitLab
+
+Bulk-register groups and repositories from a GitLab instance. Each group becomes a CodeRadar project. Already-imported repos are skipped (idempotent).
+
+```bash
+# Import all groups accessible to the token
+python scripts/import_gitlab.py --token $GITLAB_TOKEN
+
+# Limit to one group (includes subgroups)
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group
+
+# Self-hosted instance
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --base-url https://gitlab.example.com --group my-group
+
+# Preview without writing to the database
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group --dry-run
+
+# Import and immediately enqueue scans
+python scripts/import_gitlab.py --token $GITLAB_TOKEN --group my-group --scan
+python -m app.worker   # in a separate terminal
+```
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `--token` | `$GITLAB_TOKEN` | GitLab Personal Access Token |
+| `--base-url` | `$GITLAB_URL` / `https://gitlab.com` | GitLab instance URL |
+| `--group` | all groups | Limit to this group path or numeric ID |
+| `--project-name` | group full path | Override CodeRadar project name (single-group mode) |
+| `--skip-archived` | false | Skip archived repositories |
+| `--default-branch` | `main` | Fallback branch name |
+| `--scan` | false | Enqueue scans for newly imported repos |
+| `--dry-run` | false | Preview without writing to the database |
+
+### Import from GitHub
+
+Bulk-register repositories from a GitHub organisation or user. The org/user becomes a single CodeRadar project. Already-imported repos are skipped (idempotent).
+
+```bash
+# Import an organisation's repos
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org
+
+# Import a user's repos
+python scripts/import_github.py --token $GITHUB_TOKEN --user octocat
+
+# Import the token owner's own repos (no --org / --user needed)
+python scripts/import_github.py --token $GITHUB_TOKEN
+
+# Skip forks and archived repos, preview first
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org --skip-forks --skip-archived --dry-run
+
+# Import and immediately enqueue scans
+python scripts/import_github.py --token $GITHUB_TOKEN --org my-org --scan
+python -m app.worker   # in a separate terminal
+```
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `--token` | `$GITHUB_TOKEN` | GitHub Personal Access Token |
+| `--org` | — | Import repos from this GitHub organisation |
+| `--user` | — | Import repos from this GitHub user |
+| `--skip-archived` | false | Skip archived repositories |
+| `--skip-forks` | false | Skip forked repositories |
+| `--default-branch` | `main` | Fallback branch name |
+| `--scan` | false | Enqueue scans for newly imported repos |
+| `--dry-run` | false | Preview without writing to the database |
+
 ### Scan a local repository (demo mode)
 
 Scan any local git repository without Bitbucket/GitLab credentials.
@@ -185,6 +251,54 @@ python scripts/tag_inactive_repositories.py --untag-active
 
 The tag includes a description: `"Auto-tagged: no commit activity since YYYY-MM-DD"`.
 
+## Personal data scanner
+
+CodeRadar can scan source files for variable and field names that suggest personal data (PDn / PII) is being handled — useful for compliance audits and data-flow awareness.
+
+### How it works
+
+The scanner walks every non-test, non-binary source file in the repository and looks for identifier names (variable names, field names, parameter names) that match a configured list. Matches inside **comments, docstrings, and block comments** are ignored so only actual code references are reported.
+
+Supported comment styles:
+
+| Style | Languages |
+| ----- | --------- |
+| `#` to EOL + `"""` / `'''` docstrings | Python, Ruby, Shell, YAML, TOML |
+| `//` to EOL + `/* … */` blocks | JS/TS, Java, Go, C/C++, Rust, Swift, Kotlin, PHP |
+| `--` to EOL + `/* … */` blocks | SQL |
+
+### Configuration
+
+PDn types are defined in `config/pdn_types.yaml`:
+
+```yaml
+pdn_types:
+  - name: email
+    identifiers:
+      - email
+      - email_address
+      - emailAddress
+      - user_email
+      - userEmail
+  - name: phone
+    identifiers:
+      - phone
+      - phone_number
+      - phoneNumber
+```
+
+Each `name` is the category reported in findings. Each entry in `identifiers` is matched as a whole word (word-boundary anchored) against code tokens. The config path can be overridden via the `PDN_TYPES_CONFIG` environment variable.
+
+### Findings
+
+Results are stored per scan in the `scan_personal_data_findings` table and exposed via the API:
+
+```bash
+curl http://localhost:8000/api/v1/scans/1/personal-data
+```
+
+Each finding includes the PDn category, file path, line number, and the exact matched identifier.
+
 ## Add identity override
 
 Map a raw git identity to a canonical username:
@@ -198,6 +312,53 @@ curl -X POST http://localhost:8000/api/v1/developers/identity-overrides \
     "canonical_username": "d_ivanov"
   }'
 ```
+
+## Deploy with Docker
+
+Pre-built images are published to GitHub Container Registry on every push to `master` and on version tags.
+
+### Pull and run
+
+```bash
+# Download the compose file
+curl -O https://raw.githubusercontent.com/live4dev/coderadar/master/deploy/docker-compose.yml
+
+# Configure credentials
+cp .env.example .env   # or create .env manually
+# Edit .env:
+#   BITBUCKET_USERNAME=...
+#   BITBUCKET_APP_PASSWORD=...
+#   GITLAB_TOKEN=...
+
+# Start (pulls image automatically)
+docker compose -f deploy/docker-compose.yml --env-file .env up -d
+```
+
+The API will be available at `http://localhost:8000`. The worker starts automatically once the API is healthy.
+
+### Pin to a specific release
+
+Edit `deploy/docker-compose.yml` and replace `master` with a version tag:
+
+```yaml
+image: ghcr.io/live4dev/coderadar:v1.2.3
+```
+
+### Update to the latest image
+
+```bash
+docker compose -f deploy/docker-compose.yml pull
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+### Persistent data
+
+Two named volumes are created automatically:
+
+| Volume | Path in container | Contents |
+| ------ | ----------------- | -------- |
+| `coderadar_db` | `/data/db` | SQLite database |
+| `coderadar_repos` | `/data/repos_cache` | Cloned repository cache |
 
 ## Run tests
 

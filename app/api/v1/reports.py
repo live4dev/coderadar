@@ -12,6 +12,7 @@ from app.models import (
     Dependency,
     Project,
     Repository,
+    ProjectRepository,
     Scan,
     ScanStatus,
     ScanPersonalDataFinding,
@@ -33,7 +34,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 @router.get("/personal-data", response_model=PersonalDataReportOut)
 def get_personal_data_report(
     project_id: int | None = Query(None, description="Filter by project"),
-    repository_id: int | None = Query(None, description="Filter by repository"),
+    repository_id: int | None = Query(None, description="Filter by repository (ProjectRepository id)"),
     include_findings: bool = Query(False, description="Include full findings list per scan"),
     db: Session = Depends(get_db),
 ):
@@ -41,47 +42,45 @@ def get_personal_data_report(
     Aggregated PDn report: for each repository (optionally filtered), the latest
     completed scan's personal data counts and optionally findings.
     """
-    # Base repos query
     q = (
-        db.query(Repository)
-        .join(Project, Repository.project_id == Project.id)
-        .order_by(Project.id, Repository.id)
+        db.query(ProjectRepository)
+        .join(Project, ProjectRepository.project_id == Project.id)
+        .join(Repository, ProjectRepository.repository_id == Repository.id)
+        .order_by(Project.id, ProjectRepository.id)
     )
     if project_id is not None:
-        q = q.filter(Repository.project_id == project_id)
+        q = q.filter(ProjectRepository.project_id == project_id)
     if repository_id is not None:
-        q = q.filter(Repository.id == repository_id)
-    repos = q.all()
-    if not repos:
+        q = q.filter(ProjectRepository.id == repository_id)
+    prs = q.all()
+    if not prs:
         return PersonalDataReportOut(entries=[])
 
-    repo_ids = [r.id for r in repos]
-    # Latest completed scan per repo: order by started_at desc, take first per repo
+    pr_ids = [pr.id for pr in prs]
     latest_scans = (
         db.query(Scan)
         .filter(
-            Scan.repository_id.in_(repo_ids),
+            Scan.project_repository_id.in_(pr_ids),
             Scan.status == ScanStatus.completed,
         )
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .all()
     )
-    scan_by_repo: dict[int, Scan] = {}
+    scan_by_pr: dict[int, Scan] = {}
     for s in latest_scans:
-        if s.repository_id not in scan_by_repo:
-            scan_by_repo[s.repository_id] = s
+        if s.project_repository_id not in scan_by_pr:
+            scan_by_pr[s.project_repository_id] = s
 
-    # Load project names
-    project_ids = list({r.project_id for r in repos})
+    project_ids = list({pr.project_id for pr in prs})
     projects = db.query(Project).filter(Project.id.in_(project_ids)).all()
     project_name_by_id = {p.id: p.name for p in projects}
 
     entries: list[PersonalDataReportEntry] = []
-    for r in repos:
-        scan = scan_by_repo.get(r.id)
+    for pr in prs:
+        scan = scan_by_pr.get(pr.id)
         if not scan:
             continue
-        # Counts by pdn_type for this scan
+        repo = pr.repository
         count_rows = (
             db.query(
                 ScanPersonalDataFinding.pdn_type,
@@ -92,9 +91,9 @@ def get_personal_data_report(
             .all()
         )
         counts = [PersonalDataCountOut(pdn_type=t, count=c) for t, c in count_rows]
-        ref = scan.commit_sha or scan.branch or r.default_branch or "HEAD"
-        provider = r.provider_type.value
-        repo_url = r.url
+        ref = scan.commit_sha or scan.branch or pr.default_branch or "HEAD"
+        provider = repo.provider_type.value
+        repo_url = repo.url
         repository_source_url = build_source_url(repo_url, provider, ref, None, None) if repo_url and provider else None
 
         findings = None
@@ -121,10 +120,10 @@ def get_personal_data_report(
             ]
         entries.append(
             PersonalDataReportEntry(
-                project_id=r.project_id,
-                project_name=project_name_by_id.get(r.project_id, ""),
-                repository_id=r.id,
-                repository_name=r.name,
+                project_id=pr.project_id,
+                project_name=project_name_by_id.get(pr.project_id, ""),
+                repository_id=pr.id,
+                repository_name=pr.name,
                 scan_id=scan.id,
                 scan_started_at=scan.started_at,
                 scan_completed_at=scan.completed_at,
@@ -139,7 +138,7 @@ def get_personal_data_report(
 @router.get("/license-dependencies", response_model=LicenseReportOut)
 def get_license_dependencies_report(
     project_id: int | None = Query(None, description="Filter by project"),
-    repository_id: int | None = Query(None, description="Filter by repository"),
+    repository_id: int | None = Query(None, description="Filter by repository (ProjectRepository id)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -147,40 +146,41 @@ def get_license_dependencies_report(
     return dependency counts by license risk level and a list of risky packages.
     """
     q = (
-        db.query(Repository)
-        .join(Project, Repository.project_id == Project.id)
-        .order_by(Project.id, Repository.id)
+        db.query(ProjectRepository)
+        .join(Project, ProjectRepository.project_id == Project.id)
+        .join(Repository, ProjectRepository.repository_id == Repository.id)
+        .order_by(Project.id, ProjectRepository.id)
     )
     if project_id is not None:
-        q = q.filter(Repository.project_id == project_id)
+        q = q.filter(ProjectRepository.project_id == project_id)
     if repository_id is not None:
-        q = q.filter(Repository.id == repository_id)
-    repos = q.all()
-    if not repos:
+        q = q.filter(ProjectRepository.id == repository_id)
+    prs = q.all()
+    if not prs:
         return LicenseReportOut(entries=[])
 
-    repo_ids = [r.id for r in repos]
+    pr_ids = [pr.id for pr in prs]
     latest_scans = (
         db.query(Scan)
         .filter(
-            Scan.repository_id.in_(repo_ids),
+            Scan.project_repository_id.in_(pr_ids),
             Scan.status == ScanStatus.completed,
         )
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .all()
     )
-    scan_by_repo: dict[int, Scan] = {}
+    scan_by_pr: dict[int, Scan] = {}
     for s in latest_scans:
-        if s.repository_id not in scan_by_repo:
-            scan_by_repo[s.repository_id] = s
+        if s.project_repository_id not in scan_by_pr:
+            scan_by_pr[s.project_repository_id] = s
 
-    project_ids = list({r.project_id for r in repos})
+    project_ids = list({pr.project_id for pr in prs})
     projects = db.query(Project).filter(Project.id.in_(project_ids)).all()
     project_name_by_id = {p.id: p.name for p in projects}
 
     entries: list[LicenseReportEntry] = []
-    for r in repos:
-        scan = scan_by_repo.get(r.id)
+    for pr in prs:
+        scan = scan_by_pr.get(pr.id)
         if not scan:
             continue
 
@@ -213,10 +213,10 @@ def get_license_dependencies_report(
 
         entries.append(
             LicenseReportEntry(
-                project_id=r.project_id,
-                project_name=project_name_by_id.get(r.project_id, ""),
-                repository_id=r.id,
-                repository_name=r.name,
+                project_id=pr.project_id,
+                project_name=project_name_by_id.get(pr.project_id, ""),
+                repository_id=pr.id,
+                repository_name=pr.name,
                 scan_id=scan.id,
                 scan_started_at=scan.started_at,
                 scan_completed_at=scan.completed_at,

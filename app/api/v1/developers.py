@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models import (
     Developer, DeveloperTag, DeveloperProfile, DeveloperContribution, DeveloperLanguageContribution,
     DeveloperModuleContribution, DeveloperDailyActivity, IdentityOverride, Language, Module, Project,
-    Repository, Scan,
+    Repository, ProjectRepository, Scan,
 )
 from app.schemas.project import TagsUpdate
 from app.schemas.developer import (
@@ -69,8 +69,8 @@ def list_developers(
             .join(DeveloperProfile, DeveloperProfile.developer_id == Developer.id)
             .join(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
             .join(Scan, DeveloperContribution.scan_id == Scan.id)
-            .join(Repository, Scan.repository_id == Repository.id)
-            .filter(Repository.project_id == project_id)
+            .join(ProjectRepository, Scan.project_repository_id == ProjectRepository.id)
+            .filter(ProjectRepository.project_id == project_id)
             .group_by(Developer.id)
         )
     else:
@@ -333,8 +333,8 @@ def get_developer_contributions(
         project_total = (
             db.query(func.coalesce(func.sum(DeveloperContribution.commit_count), 0))
             .join(Scan, DeveloperContribution.scan_id == Scan.id)
-            .join(Repository, Scan.repository_id == Repository.id)
-            .filter(Repository.project_id == project_id)
+            .join(ProjectRepository, Scan.project_repository_id == ProjectRepository.id)
+            .filter(ProjectRepository.project_id == project_id)
             .scalar()
         )
         if project_total and project_total > 0:
@@ -458,7 +458,7 @@ def get_developer_modules(
     agg = (
         db.query(
             Project.name.label("project_name"),
-            Repository.name.label("repository_name"),
+            ProjectRepository.name.label("repository_name"),
             Module.path,
             Module.name,
             func.sum(DeveloperModuleContribution.commit_count).label("commit_count"),
@@ -466,10 +466,10 @@ def get_developer_modules(
             func.sum(DeveloperModuleContribution.loc_added).label("loc_added"),
         )
         .join(DeveloperModuleContribution, DeveloperModuleContribution.module_id == Module.id)
-        .join(Repository, Repository.id == Module.repository_id)
-        .join(Project, Project.id == Repository.project_id)
+        .join(ProjectRepository, ProjectRepository.id == Module.project_repository_id)
+        .join(Project, Project.id == ProjectRepository.project_id)
         .filter(DeveloperModuleContribution.profile_id.in_(profile_ids))
-        .group_by(Project.id, Project.name, Repository.id, Repository.name, Module.id, Module.path, Module.name)
+        .group_by(Project.id, Project.name, ProjectRepository.id, ProjectRepository.name, Module.id, Module.path, Module.name)
     )
     rows = agg.order_by(func.sum(DeveloperModuleContribution.loc_added).desc()).all()
     total_loc = sum(r.loc_added or 0 for r in rows)

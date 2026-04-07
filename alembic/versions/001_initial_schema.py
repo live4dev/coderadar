@@ -1,12 +1,10 @@
-"""Initial schema (global developers and developer_profiles)
+"""Merged initial schema
 
 Revision ID: 001
 Revises:
-Create Date: 2024-01-01 00:00:00.000000
+Create Date: 2026-04-01 00:00:00.000000
 
-Schema matches current models: Developer (id, created_at only),
-DeveloperProfile (canonical_username, etc.), profile_id in identities
-and contributions. repositories.default_branch nullable.
+Squashed from migrations 001–014. Creates the complete schema in a single step.
 """
 from typing import Sequence, Union
 from alembic import op
@@ -31,19 +29,29 @@ def upgrade() -> None:
     op.create_table(
         "repositories",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("project_id", sa.Integer(), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("name", sa.String(255), nullable=False),
         sa.Column("url", sa.Text(), nullable=False),
-        sa.Column("provider_type", sa.Enum("bitbucket", "gitlab", name="providertype"), nullable=False),
-        sa.Column("default_branch", sa.String(255), nullable=True),
+        sa.Column("provider_type", sa.Enum("bitbucket", "gitlab", "github", name="providertype"), nullable=False),
         sa.Column("clone_path", sa.Text(), nullable=True),
         sa.Column("last_commit_sha", sa.String(40), nullable=True),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
+        sa.UniqueConstraint("url", name="uq_repositories_url"),
+    )
+
+    op.create_table(
+        "project_repositories",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("project_id", sa.Integer(), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("repository_id", sa.Integer(), sa.ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("default_branch", sa.String(255), nullable=True),
         sa.Column("credentials_username", sa.String(255), nullable=True),
         sa.Column("credentials_token", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
     )
-    op.create_index("ix_repositories_project_id", "repositories", ["project_id"])
+    op.create_index("ix_project_repositories_project_id", "project_repositories", ["project_id"])
+    op.create_index("ix_project_repositories_repository_id", "project_repositories", ["repository_id"])
 
     op.create_table(
         "developers",
@@ -97,8 +105,8 @@ def upgrade() -> None:
     op.create_table(
         "scans",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("repository_id", sa.Integer(), sa.ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("status", sa.Enum("pending", "running", "completed", "failed", name="scanstatus"), nullable=False, server_default="pending"),
+        sa.Column("project_repository_id", sa.Integer(), sa.ForeignKey("project_repositories.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("status", sa.Enum("pending", "running", "completed", "failed", "cancelled", name="scanstatus"), nullable=False, server_default="pending"),
         sa.Column("branch", sa.String(255), nullable=False),
         sa.Column("commit_sha", sa.String(40), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -113,21 +121,30 @@ def upgrade() -> None:
         sa.Column("primary_language", sa.String(64), nullable=True),
         sa.Column("avg_file_loc", sa.Float(), nullable=True),
         sa.Column("large_files_count", sa.Integer(), nullable=True),
+        sa.Column("frameworks_json", sa.Text(), nullable=True),
+        sa.Column("package_managers_json", sa.Text(), nullable=True),
+        sa.Column("ci_provider", sa.String(64), nullable=True),
+        sa.Column("infra_tools_json", sa.Text(), nullable=True),
+        sa.Column("linters_json", sa.Text(), nullable=True),
+        sa.Column("has_docker", sa.Boolean(), nullable=True),
+        sa.Column("has_kubernetes", sa.Boolean(), nullable=True),
+        sa.Column("has_terraform", sa.Boolean(), nullable=True),
+        sa.Column("cancel_requested", sa.Boolean(), nullable=False, server_default="0"),
         sa.Column("started_at", sa.DateTime(), nullable=True),
         sa.Column("completed_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
     )
-    op.create_index("ix_scans_repository_id", "scans", ["repository_id"])
+    op.create_index("ix_scans_project_repository_id", "scans", ["project_repository_id"])
 
     op.create_table(
         "modules",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("repository_id", sa.Integer(), sa.ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("project_repository_id", sa.Integer(), sa.ForeignKey("project_repositories.id", ondelete="CASCADE"), nullable=False),
         sa.Column("path", sa.String(512), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
     )
-    op.create_index("ix_modules_repository_id", "modules", ["repository_id"])
+    op.create_index("ix_modules_project_repository_id", "modules", ["project_repository_id"])
 
     op.create_table(
         "scan_languages",
@@ -149,6 +166,10 @@ def upgrade() -> None:
         sa.Column("dep_type", sa.Enum("prod", "dev", "test", "unknown", name="dependencytype"), server_default="unknown"),
         sa.Column("manifest_file", sa.String(255), nullable=True),
         sa.Column("ecosystem", sa.String(64), nullable=True),
+        sa.Column("license_spdx", sa.String(128), nullable=True),
+        sa.Column("license_raw", sa.String(256), nullable=True),
+        sa.Column("license_risk", sa.String(16), nullable=False, server_default="unknown"),
+        sa.Column("is_direct", sa.Boolean(), nullable=False, server_default="1"),
     )
     op.create_index("ix_dependencies_scan_id", "dependencies", ["scan_id"])
 
@@ -225,21 +246,134 @@ def upgrade() -> None:
     )
     op.create_index("ix_scan_risks_scan_id", "scan_risks", ["scan_id"])
 
+    op.create_table(
+        "project_tags",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("project_id", sa.Integer(), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("tag", sa.String(128), nullable=False),
+        sa.UniqueConstraint("project_id", "tag", name="uq_project_tags_project_id_tag"),
+    )
+    op.create_index("ix_project_tags_project_id", "project_tags", ["project_id"])
+
+    op.create_table(
+        "repository_tags",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("project_repository_id", sa.Integer(), sa.ForeignKey("project_repositories.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("tag", sa.String(128), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.UniqueConstraint("project_repository_id", "tag", name="uq_repository_tags_project_repository_id_tag"),
+    )
+    op.create_index("ix_repository_tags_project_repository_id", "repository_tags", ["project_repository_id"])
+
+    op.create_table(
+        "developer_tags",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("developer_id", sa.Integer(), sa.ForeignKey("developers.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("tag", sa.String(128), nullable=False),
+        sa.UniqueConstraint("developer_id", "tag", name="uq_developer_tags_developer_id_tag"),
+    )
+    op.create_index("ix_developer_tags_developer_id", "developer_tags", ["developer_id"])
+
+    op.create_table(
+        "scan_personal_data_findings",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("scan_id", sa.Integer(), sa.ForeignKey("scans.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("pdn_type", sa.String(128), nullable=False),
+        sa.Column("file_path", sa.String(1024), nullable=False),
+        sa.Column("line_number", sa.Integer(), nullable=False),
+        sa.Column("matched_identifier", sa.String(255), nullable=False),
+    )
+    op.create_index("ix_scan_personal_data_findings_scan_id", "scan_personal_data_findings", ["scan_id"])
+
+    op.create_table(
+        "repository_git_tags",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("repository_id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("sha", sa.String(40), nullable=True),
+        sa.Column("message", sa.Text(), nullable=True),
+        sa.Column("tagger_name", sa.String(255), nullable=True),
+        sa.Column("tagger_email", sa.String(255), nullable=True),
+        sa.Column("tagged_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["repository_id"], ["repositories.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("repository_id", "name", name="uq_repository_git_tags_repository_id_name"),
+    )
+    op.create_index("ix_repository_git_tags_repository_id", "repository_git_tags", ["repository_id"])
+
+    op.create_table(
+        "developer_daily_activity",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("profile_id", sa.Integer(), nullable=False),
+        sa.Column("commit_date", sa.Date(), nullable=False),
+        sa.Column("commit_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.ForeignKeyConstraint(["profile_id"], ["developer_profiles.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("profile_id", "commit_date", name="uq_developer_daily_activity_profile_date"),
+    )
+    op.create_index("ix_developer_daily_activity_profile_id", "developer_daily_activity", ["profile_id"])
+
+    op.create_table(
+        "repository_daily_activity",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("project_repository_id", sa.Integer(), nullable=False),
+        sa.Column("commit_date", sa.Date(), nullable=False),
+        sa.Column("commit_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.ForeignKeyConstraint(["project_repository_id"], ["project_repositories.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("project_repository_id", "commit_date", name="uq_repository_daily_activity_pr_id_commit_date"),
+    )
+    op.create_index("ix_repository_daily_activity_project_repository_id", "repository_daily_activity", ["project_repository_id"])
+
 
 def downgrade() -> None:
+    op.drop_index("ix_repository_daily_activity_project_repository_id", table_name="repository_daily_activity")
+    op.drop_table("repository_daily_activity")
+    op.drop_index("ix_developer_daily_activity_profile_id", table_name="developer_daily_activity")
+    op.drop_table("developer_daily_activity")
+    op.drop_index("ix_repository_git_tags_repository_id", table_name="repository_git_tags")
+    op.drop_table("repository_git_tags")
+    op.drop_index("ix_scan_personal_data_findings_scan_id", table_name="scan_personal_data_findings")
+    op.drop_table("scan_personal_data_findings")
+    op.drop_index("ix_developer_tags_developer_id", table_name="developer_tags")
+    op.drop_table("developer_tags")
+    op.drop_index("ix_repository_tags_project_repository_id", table_name="repository_tags")
+    op.drop_table("repository_tags")
+    op.drop_index("ix_project_tags_project_id", table_name="project_tags")
+    op.drop_table("project_tags")
+    op.drop_index("ix_scan_risks_scan_id", table_name="scan_risks")
     op.drop_table("scan_risks")
+    op.drop_index("ix_scan_scores_scan_id", table_name="scan_scores")
     op.drop_table("scan_scores")
+    op.drop_index("ix_developer_module_contributions_profile_id", table_name="developer_module_contributions")
+    op.drop_index("ix_developer_module_contributions_scan_id", table_name="developer_module_contributions")
     op.drop_table("developer_module_contributions")
+    op.drop_index("ix_developer_language_contributions_profile_id", table_name="developer_language_contributions")
+    op.drop_index("ix_developer_language_contributions_scan_id", table_name="developer_language_contributions")
     op.drop_table("developer_language_contributions")
+    op.drop_index("ix_developer_contributions_profile_id", table_name="developer_contributions")
+    op.drop_index("ix_developer_contributions_scan_id", table_name="developer_contributions")
     op.drop_table("developer_contributions")
+    op.drop_index("ix_dependencies_scan_id", table_name="dependencies")
     op.drop_table("dependencies")
+    op.drop_index("ix_scan_languages_scan_id", table_name="scan_languages")
     op.drop_table("scan_languages")
+    op.drop_index("ix_modules_project_repository_id", table_name="modules")
     op.drop_table("modules")
+    op.drop_index("ix_scans_project_repository_id", table_name="scans")
     op.drop_table("scans")
     op.drop_table("languages")
+    op.drop_index("ix_identity_overrides_project_id", table_name="identity_overrides")
     op.drop_table("identity_overrides")
+    op.drop_index("ix_developer_identities_profile_id", table_name="developer_identities")
     op.drop_table("developer_identities")
+    op.drop_index("ix_developer_profiles_canonical_username", table_name="developer_profiles")
+    op.drop_index("ix_developer_profiles_developer_id", table_name="developer_profiles")
     op.drop_table("developer_profiles")
     op.drop_table("developers")
+    op.drop_index("ix_project_repositories_repository_id", table_name="project_repositories")
+    op.drop_index("ix_project_repositories_project_id", table_name="project_repositories")
+    op.drop_table("project_repositories")
     op.drop_table("repositories")
     op.drop_table("projects")

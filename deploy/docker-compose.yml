@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  coderadar:
+    image: ghcr.io/live4dev/coderadar:master
+    ports:
+      - "8000:8000"
+    volumes:
+      - coderadar_db:/data/db
+      - coderadar_repos:/data/repos_cache
+    environment:
+      DATABASE_URL: "sqlite:////data/db/coderadar.db"
+      REPOS_CACHE_DIR: "/data/repos_cache"
+      # Override with your credentials via .env or environment
+      BITBUCKET_USERNAME: "${BITBUCKET_USERNAME:-}"
+      BITBUCKET_APP_PASSWORD: "${BITBUCKET_APP_PASSWORD:-}"
+      GITLAB_TOKEN: "${GITLAB_TOKEN:-}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    image: ghcr.io/live4dev/coderadar:master
+    command: python -m app.worker
+    volumes:
+      - coderadar_db:/data/db
+      - coderadar_repos:/data/repos_cache
+    environment:
+      DATABASE_URL: "sqlite:////data/db/coderadar.db"
+      REPOS_CACHE_DIR: "/data/repos_cache"
+      BITBUCKET_USERNAME: "${BITBUCKET_USERNAME:-}"
+      BITBUCKET_APP_PASSWORD: "${BITBUCKET_APP_PASSWORD:-}"
+      GITLAB_TOKEN: "${GITLAB_TOKEN:-}"
+    depends_on:
+      coderadar:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  coderadar_db:
+  coderadar_repos:

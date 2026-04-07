@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models import (
     Project, ProjectTag, Developer, DeveloperProfile, DeveloperContribution,
-    Repository, RepositoryDailyActivity, Scan, ScanScore, ScanStatus,
+    Repository, ProjectRepository, RepositoryDailyActivity, Scan, ScanScore, ScanStatus,
 )
 from app.models.scan_score import ScoreDomain
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectSummaryOut, ProjectUpdate, TagsUpdate
@@ -53,7 +53,6 @@ def get_all_projects_activity(db: Session = Depends(get_db)):
             RepositoryDailyActivity.commit_date,
             func.sum(RepositoryDailyActivity.commit_count).label("count"),
         )
-        .join(Repository, RepositoryDailyActivity.repository_id == Repository.id)
         .group_by(RepositoryDailyActivity.commit_date)
         .order_by(RepositoryDailyActivity.commit_date)
         .all()
@@ -74,18 +73,18 @@ def list_projects_summary(
     if not projects:
         return []
 
-    # All repos with project_id
-    repos = (
-        db.query(Repository.id, Repository.project_id)
-        .filter(Repository.project_id.in_([p.id for p in projects]))
+    # All project-repository associations
+    prs = (
+        db.query(ProjectRepository.id, ProjectRepository.project_id)
+        .filter(ProjectRepository.project_id.in_([p.id for p in projects]))
         .all()
     )
-    repo_ids = [r.id for r in repos]
+    pr_ids = [r.id for r in prs]
     project_repo_count = {}
-    for r in repos:
+    for r in prs:
         project_repo_count[r.project_id] = project_repo_count.get(r.project_id, 0) + 1
 
-    if not repo_ids:
+    if not pr_ids:
         result = [
             ProjectSummaryOut(
                 id=p.id,
@@ -104,31 +103,31 @@ def list_projects_summary(
         ]
         return _filter_and_sort_projects(result, q, has_scans, sort_by, order)
 
-    # Latest completed scan per repo (first by started_at desc per repo)
+    # Latest completed scan per project-repository
     latest_scans = (
         db.query(Scan)
         .filter(
-            Scan.repository_id.in_(repo_ids),
+            Scan.project_repository_id.in_(pr_ids),
             Scan.status == ScanStatus.completed,
         )
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .all()
     )
-    scan_by_repo = {}
+    scan_by_pr: dict = {}
     for s in latest_scans:
-        if s.repository_id not in scan_by_repo:
-            scan_by_repo[s.repository_id] = s
+        if s.project_repository_id not in scan_by_pr:
+            scan_by_pr[s.project_repository_id] = s
 
-    # repo_id -> project_id
-    repo_to_project = {r.id: r.project_id for r in repos}
+    # pr_id -> project_id
+    pr_to_project = {r.id: r.project_id for r in prs}
 
     # Aggregate per project: scan stats + scan_ids for scores
     proj_loc: dict[int, int] = {}
     proj_files: dict[int, int] = {}
     proj_last_at: dict[int, datetime | None] = {}
     proj_scan_ids: dict[int, list[int]] = {}
-    for repo_id, scan in scan_by_repo.items():
-        pid = repo_to_project[repo_id]
+    for pr_id, scan in scan_by_pr.items():
+        pid = pr_to_project[pr_id]
         proj_loc[pid] = proj_loc.get(pid, 0) + (scan.total_loc or 0)
         proj_files[pid] = proj_files.get(pid, 0) + (scan.total_files or 0)
         if scan.completed_at:
@@ -291,7 +290,14 @@ def list_project_repositories(project_id: int, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    return db.query(Repository).options(joinedload(Repository.tags)).filter_by(project_id=project_id).order_by(Repository.id).all()
+    prs = (
+        db.query(ProjectRepository)
+        .options(joinedload(ProjectRepository.repository), joinedload(ProjectRepository.tags))
+        .filter_by(project_id=project_id)
+        .order_by(ProjectRepository.id)
+        .all()
+    )
+    return prs
 
 
 @router.post("/{project_id}/scan-all", response_model=list[ScanOut], status_code=202)
@@ -300,12 +306,12 @@ def trigger_project_scan_all(project_id: int, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    repos = db.query(Repository).filter_by(project_id=project_id).all()
-    if not repos:
+    prs = db.query(ProjectRepository).filter_by(project_id=project_id).all()
+    if not prs:
         return []
     created = []
-    for repo in repos:
-        scan = Scan(repository_id=repo.id, branch=repo.default_branch or "", status=ScanStatus.pending)
+    for pr in prs:
+        scan = Scan(project_repository_id=pr.id, branch=pr.default_branch or "", status=ScanStatus.pending)
         db.add(scan)
         created.append(scan)
     db.commit()
@@ -334,36 +340,34 @@ def list_project_repositories_with_latest_scan(
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    repos = (
-        db.query(Repository)
-        .options(joinedload(Repository.tags))
+    prs = (
+        db.query(ProjectRepository)
+        .options(joinedload(ProjectRepository.repository), joinedload(ProjectRepository.tags))
         .filter_by(project_id=project_id)
-        .order_by(Repository.id)
+        .order_by(ProjectRepository.id)
         .all()
     )
-    if not repos:
+    if not prs:
         return []
 
-    repo_ids = [r.id for r in repos]
-    # Latest completed scan per repo: order by started_at desc, take first per repo
+    pr_ids = [pr.id for pr in prs]
     latest_scans = (
         db.query(Scan)
         .filter(
-            Scan.repository_id.in_(repo_ids),
+            Scan.project_repository_id.in_(pr_ids),
             Scan.status == ScanStatus.completed,
         )
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .all()
     )
-    # One scan per repo (first occurrence is latest for that repo)
-    seen_repo_ids = set()
-    scan_by_repo = {}
+    seen_pr_ids: set = set()
+    scan_by_pr: dict = {}
     for s in latest_scans:
-        if s.repository_id not in seen_repo_ids:
-            seen_repo_ids.add(s.repository_id)
-            scan_by_repo[s.repository_id] = s
+        if s.project_repository_id not in seen_pr_ids:
+            seen_pr_ids.add(s.project_repository_id)
+            scan_by_pr[s.project_repository_id] = s
 
-    scan_ids = [s.id for s in scan_by_repo.values()]
+    scan_ids = [s.id for s in scan_by_pr.values()]
     overall_scores = {}
     if scan_ids:
         scores = (
@@ -377,10 +381,11 @@ def list_project_repositories_with_latest_scan(
         overall_scores = {row.scan_id: row.score for row in scores}
 
     result = []
-    for r in repos:
+    for pr in prs:
+        repo = pr.repository
         latest_scan = None
-        if r.id in scan_by_repo:
-            s = scan_by_repo[r.id]
+        if pr.id in scan_by_pr:
+            s = scan_by_pr[pr.id]
             latest_scan = LatestScanOut(
                 scan_id=s.id,
                 total_loc=s.total_loc,
@@ -393,16 +398,17 @@ def list_project_repositories_with_latest_scan(
             )
         result.append(
             RepositoryWithLatestScanOut(
-                id=r.id,
-                project_id=r.project_id,
-                name=r.name,
-                url=r.url,
-                provider_type=r.provider_type.value,
-                default_branch=r.default_branch,
-                last_commit_sha=r.last_commit_sha,
-                created_at=r.created_at,
+                id=pr.id,
+                repository_id=repo.id,
+                project_id=pr.project_id,
+                name=pr.name,
+                url=repo.url,
+                provider_type=repo.provider_type.value,
+                default_branch=pr.default_branch,
+                last_commit_sha=repo.last_commit_sha,
+                created_at=pr.created_at,
                 latest_scan=latest_scan,
-                tags=[RepositoryTagOut(name=t.tag, description=t.description, date=t.created_at) for t in r.tags],
+                tags=[RepositoryTagOut(name=t.tag, description=t.description, date=t.created_at) for t in pr.tags],
             )
         )
     return _filter_and_sort_repos(result, q, has_scans, sort_by, order)
@@ -481,8 +487,8 @@ def list_project_developers(project_id: int, db: Session = Depends(get_db)):
         db.query(distinct(DeveloperProfile.developer_id))
         .join(DeveloperContribution, DeveloperContribution.profile_id == DeveloperProfile.id)
         .join(Scan, DeveloperContribution.scan_id == Scan.id)
-        .join(Repository, Scan.repository_id == Repository.id)
-        .filter(Repository.project_id == project_id)
+        .join(ProjectRepository, Scan.project_repository_id == ProjectRepository.id)
+        .filter(ProjectRepository.project_id == project_id)
         .all()
     )
     dev_ids = [r[0] for r in dev_ids]
@@ -525,8 +531,8 @@ def get_project_activity(project_id: int, db: Session = Depends(get_db)):
             RepositoryDailyActivity.commit_date,
             func.sum(RepositoryDailyActivity.commit_count).label("count"),
         )
-        .join(Repository, RepositoryDailyActivity.repository_id == Repository.id)
-        .filter(Repository.project_id == project_id)
+        .join(ProjectRepository, RepositoryDailyActivity.project_repository_id == ProjectRepository.id)
+        .filter(ProjectRepository.project_id == project_id)
         .group_by(RepositoryDailyActivity.commit_date)
         .order_by(RepositoryDailyActivity.commit_date)
         .all()
