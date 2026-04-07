@@ -56,6 +56,10 @@ class _CommentStripper:
         self._in_block_comment = False
         self._in_py_docstring: str | None = None
 
+    def code_portion(self, line: str) -> str:
+        """Return only the code part of *line* (comment stripped)."""
+        return self.scan_line(line)[0]
+
     def scan_line(self, line: str) -> tuple[str, str]:
         """Return ``(code_part, comment_part)`` for *line*.
 
@@ -266,30 +270,20 @@ def scan_repository_for_pdn(
                     line_num += 1
                     if line_num > MAX_LINES_PER_FILE:
                         break
-                    code_part, comment_part = stripper.scan_line(line)
+                    code_part, _comment_part = stripper.scan_line(line)
+                    if not code_part.strip():
+                        continue
                     for pdn_type, regex in compiled:
-                        if code_part.strip():
-                            m = regex.search(code_part)
-                            if m:
-                                findings.append(
-                                    PDnFinding(
-                                        pdn_type=pdn_type,
-                                        file_path=rel_path,
-                                        line_number=line_num,
-                                        matched_identifier=m.group(0),
-                                    )
+                        m = regex.search(code_part)
+                        if m:
+                            findings.append(
+                                PDnFinding(
+                                    pdn_type=pdn_type,
+                                    file_path=rel_path,
+                                    line_number=line_num,
+                                    matched_identifier=m.group(0),
                                 )
-                        if comment_part.strip():
-                            m = regex.search(comment_part)
-                            if m:
-                                findings.append(
-                                    PDnFinding(
-                                        pdn_type=pdn_type,
-                                        file_path=rel_path,
-                                        line_number=line_num,
-                                        matched_identifier=m.group(0),
-                                    )
-                                )
+                            )
             files_scanned += 1
         except OSError:
             continue
