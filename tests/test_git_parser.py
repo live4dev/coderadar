@@ -193,6 +193,14 @@ def test_parse_language_none_for_unknown_ext():
     assert fc.language is None
 
 
+def test_parse_git_log_v2_uses_all_flag(tmp_path):
+    """Ensure --all is passed so commits from all branches are captured."""
+    with patch("app.services.git_analytics.git_parser._run_git", return_value="") as mock_run:
+        parse_git_log_v2(tmp_path)
+    called_args = mock_run.call_args[0]
+    assert "--all" in called_args
+
+
 # ── get_head_sha ──────────────────────────────────────────────────────────────
 
 def test_get_head_sha():

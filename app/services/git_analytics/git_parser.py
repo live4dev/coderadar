@@ -70,7 +70,7 @@ def parse_git_log_v2(repo_path: Path) -> list[CommitRecord]:
     Respects settings.git_history_scan_limit (0 = unlimited).
     """
     fmt = f"--format={_SEP}%n%H%n%aN%n%aE%n%aI"
-    args: list[str] = ["log", fmt, "--numstat", "--no-merges"]
+    args: list[str] = ["log", fmt, "--numstat", "--no-merges", "--all"]
     limit = settings.git_history_scan_limit or 0
     if limit > 0:
         args.extend(["-n", str(limit)])

@@ -11,12 +11,13 @@
 - [x] Add filter by tags for developers page
 - [x] Add tag "inactive" for developers
 - [x] Add tag "inactive" for repositories
+- [x] Capture Commits from All Git Branches for Analytics
+- [x] Script for import from BB/gitlab
+- [ ] Delete project with repositories
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
-- [ ] Add Licence scanner for requirements
+- [ ] Add Licence scanner for requirements / add local artifactory
+- [ ] Personal data scanner improvements, taks into account only variables, not docs
+- [ ] Describe code quality metrics. Code quality improvement
+- [ ] Project/repository risk matrix
 - [ ] Add Risks Map per project / repository to Analytic section
 - [ ] Add difference analizer between versions
-- [ ] Personal data scanner improvements, taks into account only variables, not docs
-- [ ] Describe code quality metrics
-- [ ] Project/repository risk matrix
-- [ ] Script for import from BB/gitlab
-- [ ] Delete project with repositories
