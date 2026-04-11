@@ -19,7 +19,6 @@
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements / add local artifactory
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
-
 - [ ] Code quality improvement
 - [ ] Project/repository risk matrix
 - [ ] Add Risks Map per project / repository to Analytic section
