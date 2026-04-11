@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeRadar — Developer Docs</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  .dev-docs-layout {
+    display: flex;
+    height: calc(100vh - 56px);
+    overflow: hidden;
+  }
+  .dev-docs-sidebar {
+    width: 260px;
+    min-width: 220px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px 0;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .dev-docs-sidebar .sidebar-label {
+    padding: 0 16px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .doc-link {
+    display: block;
+    padding: 7px 16px;
+    font-size: 13px;
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+    word-break: break-word;
+  }
+  .doc-link:hover { background: var(--surface-hover, rgba(255,255,255,0.05)); }
+  .doc-link.active { border-left-color: var(--accent); color: var(--accent); background: var(--surface-hover, rgba(255,255,255,0.05)); }
+  .doc-link .doc-group {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 1px;
+  }
+  .dev-docs-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 40px;
+    max-width: 860px;
+  }
+  .dev-docs-main h1,
+  .dev-docs-main h2,
+  .dev-docs-main h3 { color: var(--text); margin-top: 1.5em; }
+  .dev-docs-main h1 { font-size: 1.6em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+  .dev-docs-main h2 { font-size: 1.2em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+  .dev-docs-main p, .dev-docs-main li { color: var(--text); line-height: 1.7; }
+  .dev-docs-main a { color: var(--accent); }
+  .dev-docs-main pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  .dev-docs-main code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.9em;
+  }
+  .dev-docs-main pre code {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .dev-docs-main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 13px;
+  }
+  .dev-docs-main th, .dev-docs-main td {
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    text-align: left;
+  }
+  .dev-docs-main th { background: var(--surface); font-weight: 600; }
+  .dev-docs-main blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 0;
+    padding: 4px 16px;
+    color: var(--text-muted);
+  }
+  .dev-docs-main hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+  .doc-empty { color: var(--text-muted); font-size: 14px; padding-top: 48px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/ui" class="logo" style="text-decoration:none">Code<span>Radar</span></a>
+  <div class="spacer"></div>
+  <a href="/uikit" target="_blank" class="api-link">UI Kit ↗</a>
+  <a href="/dev-docs" class="api-link" style="border-color:var(--accent)">Dev Docs</a>
+  <a href="/docs" target="_blank" class="api-link">API Docs ↗</a>
+</header>
+
+<div class="dev-docs-layout">
+  <nav class="dev-docs-sidebar" id="sidebar"></nav>
+  <main class="dev-docs-main" id="content">
+    <p class="doc-empty">Select a document from the sidebar.</p>
+  </main>
+</div>
+
+<script>
+const docs = {{ docs | tojson }};
+
+function groupDocs(docs) {
+  const groups = {};
+  docs.forEach(d => {
+    const group = d.group || '';
+    if (!groups[group]) groups[group] = [];
+    groups[group].push(d);
+  });
+  return groups;
+}
+
+function renderSidebar(activeDoc) {
+  const sidebar = document.getElementById('sidebar');
+  const groups = groupDocs(docs);
+  const groupOrder = Object.keys(groups).sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b));
+  let html = '';
+  groupOrder.forEach(group => {
+    if (group) html += `<div class="sidebar-label" style="margin-top:12px">${group}</div>`;
+    else html += `<div class="sidebar-label">General</div>`;
+    groups[group].forEach(d => {
+      const active = activeDoc && d.path === activeDoc ? ' active' : '';
+      html += `<a class="doc-link${active}" data-path="${d.path}" onclick="loadDoc('${d.path}', this)">${d.name}</a>`;
+    });
+  });
+  sidebar.innerHTML = html;
+}
+
+async function loadDoc(path, el) {
+  document.querySelectorAll('.doc-link').forEach(a => a.classList.remove('active'));
+  if (el) el.classList.add('active');
+  history.replaceState(null, '', '#' + path);
+
+  const content = document.getElementById('content');
+  content.innerHTML = '<p class="doc-empty">Loading…</p>';
+  try {
+    const res = await fetch('/dev-docs/raw/' + path);
+    if (!res.ok) throw new Error(res.statusText);
+    const md = await res.text();
+    content.innerHTML = marked.parse(md);
+    content.scrollTop = 0;
+  } catch (e) {
+    content.innerHTML = `<p class="doc-empty">Failed to load: ${e.message}</p>`;
+  }
+}
+
+renderSidebar();
+const hash = location.hash.slice(1);
+if (hash && docs.find(d => d.path === hash)) {
+  const el = document.querySelector(`.doc-link[data-path="${hash}"]`);
+  loadDoc(hash, el);
+} else if (docs.length) {
+  const first = docs[0];
+  const el = document.querySelector(`.doc-link[data-path="${first.path}"]`);
+  loadDoc(first.path, el);
+}
+</script>
+</body>
+</html>

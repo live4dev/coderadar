@@ -14,12 +14,14 @@
 - [x] Capture Commits from All Git Branches for Analytics
 - [x] Script for import from BB/gitlab
 - [x] Delete project with repositories
+- [x] Add logs to loki
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements / add local artifactory
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
-- [ ] Describe code quality metrics. Code quality improvement
+- [x] Describe code quality metrics
+- [ ] Code quality improvement
 - [ ] Project/repository risk matrix
 - [ ] Add Risks Map per project / repository to Analytic section
 - [ ] Add difference analizer between versions
-- [ ] Add logs to loki
 - [ ] Merge admin section with user space
+- [ ] Developers ratings
