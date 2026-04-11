@@ -13,7 +13,7 @@
 - [x] Add tag "inactive" for repositories
 - [x] Capture Commits from All Git Branches for Analytics
 - [x] Script for import from BB/gitlab
-- [ ] Delete project with repositories
+- [x] Delete project with repositories
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements / add local artifactory
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
