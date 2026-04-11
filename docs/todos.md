@@ -15,10 +15,11 @@
 - [x] Script for import from BB/gitlab
 - [x] Delete project with repositories
 - [x] Add logs to loki
+- [x] Describe code quality metrics
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements / add local artifactory
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
-- [x] Describe code quality metrics
+
 - [ ] Code quality improvement
 - [ ] Project/repository risk matrix
 - [ ] Add Risks Map per project / repository to Analytic section
