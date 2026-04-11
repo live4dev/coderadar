@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: ["coderadar", "worker"]
+
+    relabel_configs:
+      # Extract service name from "projectname-servicename-1" container name format
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/[^-]+-([^-]+)-.*"
+        target_label: "service"
+      - source_labels: ["__meta_docker_container_name"]
+        target_label: "container"
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+
+    pipeline_stages:
+      # Parse structlog JSON output: {"level":"info","event":"...","logger":"...","timestamp":"..."}
+      - json:
+          expressions:
+            level: level
+            event: event
+            logger: logger
+      # Promote level and logger to Loki labels for filtering
+      - labels:
+          level:
+          logger:
+      # Drop uvicorn health check access logs (fires every 30s)
+      - drop:
+          expression: '.*GET /health.*'
+          drop_counter_reason: health_check_noise

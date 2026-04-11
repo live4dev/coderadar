@@ -21,3 +21,5 @@
 - [ ] Project/repository risk matrix
 - [ ] Add Risks Map per project / repository to Analytic section
 - [ ] Add difference analizer between versions
+- [ ] Add logs to loki
+- [ ] Merge admin section with user space
