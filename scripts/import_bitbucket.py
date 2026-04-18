@@ -31,7 +31,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.session import SessionLocal
-from app.models import Project, Repository, Scan, ScanStatus, ProviderType
+from app.models import Project, Repository, ProjectRepository, Scan, ScanStatus, ProviderType
 from app.services.scanning.queue import enqueue
 from app.core.logging import setup_logging, get_logger
 
@@ -201,33 +201,47 @@ def main() -> None:
                 total_new += 1
                 continue
 
-            existing = db.query(Repository).filter_by(
-                project_id=cr_project.id, url=clone_url
-            ).first()
+            # Check if this repo is already linked to this project
+            existing_pr = (
+                db.query(ProjectRepository)
+                .join(Repository, Repository.id == ProjectRepository.repository_id)
+                .filter(Repository.url == clone_url, ProjectRepository.project_id == cr_project.id)
+                .first()
+            )
 
-            if existing:
+            if existing_pr:
                 print(f"  [EXISTS]  {name:<40} (skipped)")
                 total_skipped += 1
                 continue
 
-            repo_record = Repository(
+            # Get or create the globally-unique Repository row
+            repo_record = db.query(Repository).filter_by(url=clone_url).first()
+            if not repo_record:
+                repo_record = Repository(
+                    url=clone_url,
+                    provider_type=ProviderType.bitbucket,
+                )
+                db.add(repo_record)
+                db.flush()
+
+            # Create the project-specific link
+            pr_record = ProjectRepository(
                 project_id=cr_project.id,
+                repository_id=repo_record.id,
                 name=name,
-                url=clone_url,
-                provider_type=ProviderType.bitbucket,
                 default_branch=default_branch,
                 credentials_username=store_username,
                 credentials_token=store_token,
             )
-            db.add(repo_record)
+            db.add(pr_record)
             db.commit()
-            db.refresh(repo_record)
+            db.refresh(pr_record)
             print(f"  [NEW]     {name:<40} {clone_url}")
             total_new += 1
 
             if args.scan:
                 scan = Scan(
-                    repository_id=repo_record.id,
+                    project_repository_id=pr_record.id,
                     branch=default_branch,
                     status=ScanStatus.pending,
                 )
