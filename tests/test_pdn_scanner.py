@@ -7,7 +7,9 @@ from app.services.pii.config import PDnTypeConfig
 from app.services.pii.pdn_scanner import (
     PDnFinding,
     _CommentStripper,
+    _SKIP_DOC_EXTENSIONS,
     _build_identifier_patterns,
+    _is_pdn_target,
     _is_source_file,
     scan_repository_for_pdn,
 )
@@ -46,6 +48,66 @@ def test_is_source_file_unknown_ext():
 
 def test_is_source_file_dockerfile():
     assert _is_source_file(Path("Dockerfile")) is True
+
+
+# ── _SKIP_DOC_EXTENSIONS / _is_pdn_target ────────────────────────────────────
+
+def test_skip_doc_extensions_contains_expected_types():
+    assert {".md", ".rst", ".txt", ".adoc", ".wiki"} <= _SKIP_DOC_EXTENSIONS
+
+
+@pytest.mark.parametrize("ext", [".md", ".rst", ".txt", ".adoc", ".wiki"])
+def test_is_pdn_target_excludes_doc_extension(ext):
+    assert _is_pdn_target(Path(f"docs/README{ext}")) is False
+
+
+def test_is_pdn_target_includes_python():
+    assert _is_pdn_target(Path("app/service.py")) is True
+
+
+def test_is_pdn_target_includes_javascript():
+    assert _is_pdn_target(Path("src/app.js")) is True
+
+
+def test_scan_skips_markdown_file():
+    pdn = _pdn("email", "user_email")
+    repo = _make_repo({
+        "docs/readme.md": "user_email: the user's email\n",
+        "app/service.py": "x = 1\n",
+    })
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert all(not f.file_path.endswith(".md") for f in findings)
+
+
+def test_scan_skips_rst_file():
+    pdn = _pdn("email", "user_email")
+    repo = _make_repo({
+        "docs/api.rst": "user_email\n    The user email field.\n",
+        "app/service.py": "x = 1\n",
+    })
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert all(not f.file_path.endswith(".rst") for f in findings)
+
+
+def test_scan_skips_txt_file():
+    pdn = _pdn("phone", "phone_number")
+    repo = _make_repo({
+        "notes.txt": "phone_number is collected at signup\n",
+        "app/main.py": "x = 1\n",
+    })
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert all(not f.file_path.endswith(".txt") for f in findings)
+
+
+def test_scan_still_finds_identifier_alongside_skipped_doc_file():
+    pdn = _pdn("email", "user_email")
+    repo = _make_repo({
+        "docs/readme.md": "user_email: documented here\n",
+        "app/service.py": "user_email = request.data\n",
+    })
+    findings = scan_repository_for_pdn(repo, [pdn])
+    assert len(findings) == 1
+    assert findings[0].file_path == "app/service.py"
 
 
 # ── _build_identifier_patterns ────────────────────────────────────────────────

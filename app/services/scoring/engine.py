@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import Counter
 from dataclasses import dataclass, field
 import json
 
@@ -43,11 +44,12 @@ def compute_scorecard(
     stack: StackInfo,
     complexity: ComplexityResult,
     developers: list[DeveloperStats],
+    deps: list | None = None,
 ) -> ScorecardResult:
     cq = _score_code_quality(file_result, complexity, stack)
     tq = _score_test_quality(file_result)
     dq = _score_doc_quality(file_result)
-    dlq = _score_delivery_quality(stack)
+    dlq = _score_delivery_quality(stack, deps or [])
     maint = _score_maintainability(file_result, complexity, developers)
 
     overall_score = round(
@@ -190,7 +192,7 @@ def _score_doc_quality(fa: FileAnalysisResult) -> DomainScore:
 
 # ── Delivery Quality ─────────────────────────────────────────────────────────
 
-def _score_delivery_quality(stack: StackInfo) -> DomainScore:
+def _score_delivery_quality(stack: StackInfo, deps: list) -> DomainScore:
     score = 0.0
     details: dict = {}
 
@@ -204,6 +206,27 @@ def _score_delivery_quality(stack: StackInfo) -> DomainScore:
     if stack.has_kubernetes or stack.has_helm or stack.has_terraform:
         score += 20
         details["has_infra_as_code"] = True
+
+    if deps:
+        score += 10
+        details["has_requirements"] = True
+        # Pick most representative manifest file (prefer declared-only entries)
+        manifest_files = [d.manifest_file for d in deps if d.discovery_mode == "declared_only"]
+        if not manifest_files:
+            manifest_files = [d.manifest_file for d in deps]
+        details["requirements_file"] = Counter(manifest_files).most_common(1)[0][0]
+        # Pinned = any dep originated from a lockfile
+        pinned = any(d.discovery_mode in ("locked", "resolved", "installed") for d in deps)
+        if not pinned:
+            # Fallback: check version strings for exact pins (no range operators)
+            versioned = [d for d in deps if d.version]
+            pinned = bool(versioned) and all(
+                not any(d.version.startswith(c) for c in ("^", "~", ">", "<", "*"))
+                for d in versioned
+            )
+        details["requirements_pinned"] = pinned
+        if pinned:
+            score += 10
 
     score = max(0.0, min(100.0, score))
     return DomainScore("delivery_quality", round(score, 1), details)

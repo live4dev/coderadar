@@ -195,7 +195,7 @@ def run_scan(scan_id: int, db: Session) -> None:
         # ── Stage 6: scoring & risks ───────────────────────────────────────
         _append_log(scan, db, "Stage 6: scoring & risk detection")
         logger.info("stage_scoring")
-        scorecard = compute_scorecard(file_result, stack, complexity, dev_stats)
+        scorecard = compute_scorecard(file_result, stack, complexity, dev_stats, deps)
         for domain_score in scorecard.all_domains():
             db.add(ScanScore(
                 scan_id=scan.id,

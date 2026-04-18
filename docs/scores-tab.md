@@ -2,6 +2,8 @@
 
 The **Scores** tab appears on the scan detail page (`/ui/projects/{project_id}/repos/{repo_id}/scans/{scan_id}`) and shows a quality scorecard computed for a specific scan.
 
+> **Work in progress** — The scoring model is under active development. Weights, thresholds, and signal definitions may change between scans.
+
 ---
 
 ## Overview card
@@ -18,7 +20,13 @@ At the top of the tab a large numeric badge shows the **Overall** score (0–100
 
 ## Domain scores table
 
-Below the overall card, a table lists the five quality domains with a labelled progress bar and numeric value for each.
+Below the overall card, a table lists the five quality domains. Each row shows:
+
+- the domain name and its **weight** in the overall score
+- a colour-coded progress bar and numeric score
+- **signal chips** — the individual penalties and bonuses that contributed to the score, sourced from the `details` field of the API response
+
+Signal chips are colour-coded: green with an ↑ arrow for positive contributions, red with a ↓ arrow for penalties.
 
 | Domain | Weight in Overall |
 |--------|------------------|
@@ -72,6 +80,8 @@ Points are awarded for the presence of specific documentation artefacts. Raw poi
 | CI pipeline config present | +40 |
 | Dockerfile present | +30 |
 | Kubernetes, Helm, or Terraform config present | +20 |
+| Dependency manifest present (requirements.txt, package.json, go.mod, Cargo.toml, pom.xml, …) | +10 |
+| All dependency versions are pinned / exact | +10 |
 
 ### Maintainability (0–100, starts at 60)
 
@@ -93,6 +103,62 @@ overall = code_quality × 0.25
         + delivery      × 0.20
         + maintainability × 0.20
 ```
+
+---
+
+## Signal chips per domain
+
+The frontend parses the `details` JSON string from each score record and renders inline signal chips directly under the score bar.
+
+### Code Quality signals
+
+| Key | Chip text |
+| --- | --- |
+| `large_files_penalty` | Large files (≥500 LOC): N file(s) — −X pts |
+| `large_functions_penalty` | Large functions (≥50 LOC) — −X pts |
+| `avg_loc_penalty` | Average file LOC > 300 — −10 pts |
+| `avg_loc_ok` | Average file LOC < 150 — within healthy range |
+| `linters` | Linters detected: … — +10 pts |
+| `formatters` | Formatters detected: … — +5 pts |
+
+### Test Quality signals
+
+| Key | Chip text |
+| --- | --- |
+| `has_tests: false` | No test files found |
+| `has_tests: true` | Test files present — +50 pts |
+| `test_ratio` | Test-to-source ratio: N% [— +X pts] |
+
+### Doc Quality signals
+
+| Key | Chip text |
+| --- | --- |
+| `has_docs: false` | No documentation files found |
+| `has_readme` | README present — +20 pts |
+| `has_install_docs` | Install / setup docs — +15 pts |
+| `has_architecture_docs` | Architecture docs or ADRs — +15 pts |
+| `has_changelog` | CHANGELOG or HISTORY — +15 pts |
+| `has_runbook` | Runbook — +10 pts |
+
+### Delivery Quality signals
+
+| Key | Chip text |
+| --- | --- |
+| `has_ci` + `ci_provider` | CI pipeline (provider) — +40 pts |
+| `has_docker` | Dockerfile present — +30 pts |
+| `has_infra_as_code` | Kubernetes / Helm / Terraform config — +20 pts |
+| `has_requirements` + `requirements_file` | Dependency manifest (file) — +10 pts |
+| `requirements_pinned: true` | Dependencies have pinned versions — +10 pts |
+| `requirements_pinned: false` | Dependency versions are not fully pinned |
+
+### Maintainability signals
+
+| Key | Chip text |
+| --- | --- |
+| `single_dev` | Single contributor — −20 pts |
+| `multi_dev` | 3+ contributors — +10 pts |
+| `top_dev_share` | Top contributor share: N% [— −X pts] |
+| `high_complexity` | High complexity: >10 files above threshold — −10 pts |
 
 ---
 

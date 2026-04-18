@@ -16,6 +16,12 @@ from app.models.scan import ScanStatus
 from app.services.source_links import build_source_url
 from app.services.analysis.license_report import build_license_report, build_license_csv
 from app.services.analysis.license_report import _classify_license
+from app.services.analysis.file_analyzer import analyze_files
+from app.services.analysis.stack_detector import detect_stack
+from app.services.analysis.complexity import analyze_complexity
+from app.services.analysis.dependency_parser import parse_all as parse_deps
+from app.services.git_analytics.contributor_aggregator import aggregate_contributions
+from app.services.scoring.engine import compute_scorecard
 from app.schemas.scan import (
     ScanOut, ScanSummaryOut, ScanLanguageOut,
     DependencyOut, DependencyLicenseSummaryOut, ScanScoreOut, ScanRiskOut,
@@ -225,6 +231,56 @@ def get_license_report_csv(scan_id: int, db: Session = Depends(get_db)):
 def get_scan_scores(scan_id: int, db: Session = Depends(get_db)):
     _get_scan_or_404(scan_id, db)
     return db.query(ScanScore).filter_by(scan_id=scan_id).all()
+
+
+@router.post("/{scan_id}/rescore")
+def rescore_scan(scan_id: int, db: Session = Depends(get_db)):
+    """Re-run scoring against the existing clone without a full re-scan."""
+    from pathlib import Path
+    from app.models import IdentityOverride
+
+    scan = _get_scan_or_404(scan_id, db)
+    pr = scan.project_repository
+    repo = pr.repository
+
+    clone_path = repo.clone_path
+    if not clone_path:
+        raise HTTPException(422, "No clone path recorded — run a full scan first")
+    repo_path = Path(clone_path)
+    if not repo_path.exists():
+        raise HTTPException(422, "Clone path no longer available — run a full scan")
+
+    file_result = analyze_files(repo_path)
+    stack = detect_stack(repo_path, file_result.languages)
+    complexity = analyze_complexity(repo_path, file_result.languages)
+
+    overrides = {
+        **(
+            {row.raw_name.strip().lower(): row.canonical_username for row in
+             db.query(IdentityOverride).filter_by(project_id=pr.project_id).all()
+             if row.raw_name}
+        ),
+        **(
+            {row.raw_email.strip().lower(): row.canonical_username for row in
+             db.query(IdentityOverride).filter_by(project_id=pr.project_id).all()
+             if row.raw_email}
+        ),
+    }
+    dev_stats = aggregate_contributions(repo_path, overrides)
+    deps = parse_deps(repo_path)
+
+    scorecard = compute_scorecard(file_result, stack, complexity, dev_stats, deps)
+
+    db.query(ScanScore).filter_by(scan_id=scan_id).delete()
+    for ds in scorecard.all_domains():
+        db.add(ScanScore(
+            scan_id=scan_id,
+            domain=ds.domain,
+            score=ds.score,
+            details=ds.details_json(),
+        ))
+    db.commit()
+    return {"status": "ok", "scan_id": scan_id}
 
 
 @router.get("/{scan_id}/risks", response_model=list[ScanRiskOut])

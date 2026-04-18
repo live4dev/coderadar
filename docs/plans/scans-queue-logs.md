@@ -7,7 +7,6 @@ Expand the Scans Queue view to show all scans (not just pending/running) with:
 - Spent time (duration)
 - Scanning status
 - Scanning logs (per-stage log entries)
-
 ---
 
 ## Changes

@@ -178,8 +178,8 @@ class PDnFinding:
     matched_identifier: str
 
 
-# Plain-text documentation extensions not in EXTENSION_LANG_MAP but worth scanning
-_DOC_EXTENSIONS = frozenset({".txt", ".adoc", ".wiki"})
+# Documentation file extensions — skip entirely (scan variables, not docs)
+_SKIP_DOC_EXTENSIONS = frozenset({".md", ".rst", ".txt", ".adoc", ".wiki"})
 
 
 def _is_source_file(path: Path) -> bool:
@@ -193,8 +193,10 @@ def _is_source_file(path: Path) -> bool:
 
 
 def _is_pdn_target(path: Path) -> bool:
-    """True for source files AND plain documentation files."""
-    return _is_source_file(path) or path.suffix.lower() in _DOC_EXTENSIONS
+    """True for source files, excluding documentation formats."""
+    if path.suffix.lower() in _SKIP_DOC_EXTENSIONS:
+        return False
+    return _is_source_file(path)
 
 
 def _build_identifier_patterns(

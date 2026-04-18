@@ -16,6 +16,9 @@
 - [x] Delete project with repositories
 - [x] Add logs to loki
 - [x] Describe code quality metrics
+- [x] Add information about scoring on scores page
+- [x] Add to scoring information about dependencies
+- [ ] Requirements fixed versions
 - [ ] Add roles for ui and api: viewer, admin (should have access by token and auth)
 - [ ] Add Licence scanner for requirements / add local artifactory
 - [ ] Personal data scanner improvements, taks into account only variables, not docs
@@ -25,3 +28,6 @@
 - [ ] Add difference analizer between versions
 - [ ] Merge admin section with user space
 - [ ] Developers ratings
+- [ ] Split python version on python2, python3
+- [ ] Add security scanner on github
+- [ ] Add extra static analysis tools https://github.com/analysis-tools-dev/static-analysis
