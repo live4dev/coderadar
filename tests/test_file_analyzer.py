@@ -66,7 +66,7 @@ def test_binary_extensions_ignored(tmp_path):
     _write(tmp_path / "app.py")
     fr = analyze_files(tmp_path)
     assert fr.file_count_source == 1
-    assert "Python" in fr.languages
+    assert any(k.startswith("Python") for k in fr.languages)
 
 
 # ── Lockfile detection ────────────────────────────────────────────────────────
@@ -111,9 +111,10 @@ def test_multi_language(tmp_path):
     _write(tmp_path / "app.py", "a\n" * 10)
     _write(tmp_path / "index.ts", "b\n" * 5)
     fr = analyze_files(tmp_path)
-    assert "Python" in fr.languages
+    py_key = next(k for k in fr.languages if k.startswith("Python"))
+    assert py_key in fr.languages
     assert "TypeScript" in fr.languages
-    assert fr.languages["Python"].loc == 10
+    assert fr.languages[py_key].loc == 10
     assert fr.languages["TypeScript"].loc == 5
 
 

@@ -109,8 +109,11 @@ function _startRefreshIfNeeded() {
 
 function _duration(s) {
   if (!s.started_at) return '—';
-  const start = new Date(s.started_at);
-  const end = s.completed_at ? new Date(s.completed_at) : new Date();
+  // Timestamps from the server are naive UTC strings (no "Z" suffix).
+  // Append "Z" so the browser parses them as UTC, not local time.
+  const toUtc = ts => new Date(ts.endsWith('Z') || ts.includes('+') ? ts : ts + 'Z');
+  const start = toUtc(s.started_at);
+  const end = s.completed_at ? toUtc(s.completed_at) : new Date();
   const secs = Math.floor((end - start) / 1000);
   if (secs < 60) return secs + 's';
   const m = Math.floor(secs / 60), r = secs % 60;

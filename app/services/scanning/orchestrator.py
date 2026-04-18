@@ -107,6 +107,10 @@ def run_scan(scan_id: int, db: Session) -> None:
         scan.large_files_count = file_result.large_files_count
 
         _persist_languages(db, scan, file_result.languages)
+        python_lang_name = next(
+            (c for c in ("Python 2", "Python 3", "Python") if c in file_result.languages),
+            "Python 3",
+        )
         _append_log(scan, db, f"File analysis done: {file_result.total_files} files, {file_result.total_loc} LOC")
         db.commit()
         _check_cancelled(scan, db)
@@ -166,7 +170,7 @@ def run_scan(scan_id: int, db: Session) -> None:
         _append_log(scan, db, "Stage 5: git analytics")
         logger.info("stage_git_analytics")
         overrides = _load_overrides(db, pr.project_id)
-        dev_stats = aggregate_contributions(repo_path, overrides)
+        dev_stats = aggregate_contributions(repo_path, overrides, python_lang_name=python_lang_name)
 
         _persist_developers(db, scan, pr.project_id, pr.id, dev_stats, file_result.languages)
 

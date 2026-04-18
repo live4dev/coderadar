@@ -73,6 +73,58 @@ PROJECTS: dict[str, list[str]] = {
         "kubernetes/dashboard",
         "helm/helm",
     ],
+    "Erlang": [
+        "erlang/otp",               # Erlang/OTP — the language runtime itself
+        "rabbitmq/rabbitmq-server", # most popular Erlang production system
+        "emqx/emqx",                # MQTT broker
+        "ninenines/cowboy",         # HTTP server
+        "processone/ejabberd",      # XMPP server
+        "apache/couchdb",           # document database
+        "happi/theBeamBook",        # deep-dive book on the BEAM VM
+    ],
+    "Java": [
+        "spring-projects/spring-boot",
+        "spring-projects/spring-framework",
+        "elastic/elasticsearch",
+        "apache/kafka",
+        "netty/netty",
+        "apache/hadoop",
+        "junit-team/junit5",
+        "google/guava",
+        "square/okhttp",
+        "square/retrofit",
+        "mybatis/mybatis-3",
+        "ReactiveX/RxJava",
+        "google/gson",
+        "FasterXML/jackson-databind",
+    ],
+    "Scala": [
+        "scala/scala",
+        "akka/akka",
+        "apache/spark",             # primary language is Scala
+        "playframework/playframework",
+        "typelevel/cats",
+        "typelevel/fs2",
+        "zio/zio",
+        "slick/slick",
+        "scalameta/scalafmt",
+        "sbt/sbt",
+        "lampepfl/dotty",           # Scala 3 compiler
+    ],
+    "Python 2 Era": [
+        "django/django",           # last Python 2 support: 1.11 LTS
+        "kennethreitz/requests",   # widely used, shipped Python 2 builds
+        "fabric/fabric",           # originally Python 2-first
+        "paramiko/paramiko",       # Python 2 compatible for years
+        "pypa/pip",                # carries decades of legacy compat code
+        "twisted/twisted",         # one of the oldest Python 2 projects
+        "Pylons/pyramid",          # Python 2/3 dual-support era
+        "sqlalchemy/sqlalchemy",   # long Python 2 support window
+        "pallets/flask",           # 0.x–1.x shipped Python 2 support
+        "celery/celery",           # Python 2 support through 4.x
+        "boto/boto",               # original AWS SDK, Python 2 only
+        "gevent/gevent",           # Python 2 greenlet era
+    ],
     "wemake-services": [
         "wemake-services/wemake-python-styleguide",
         "wemake-services/wemake-django-template",

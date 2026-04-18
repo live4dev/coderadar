@@ -61,13 +61,18 @@ def _clean_filepath(raw: str) -> str | None:
     return raw
 
 
-def parse_git_log_v2(repo_path: Path) -> list[CommitRecord]:
+def parse_git_log_v2(
+    repo_path: Path,
+    python_lang_name: str = "Python",
+) -> list[CommitRecord]:
     """
     Parse git log with --numstat.
     Each commit block is separated by _SEP on its own line.
     Format: SEP\\nSHA\\nAuthorName\\nAuthorEmail\\nISO-timestamp
     followed by blank line then numstat lines.
     Respects settings.git_history_scan_limit (0 = unlimited).
+
+    python_lang_name: label to use for .py files ("Python", "Python 2", or "Python 3").
     """
     fmt = f"--format={_SEP}%n%H%n%aN%n%aE%n%aI"
     args: list[str] = ["log", fmt, "--numstat", "--no-merges", "--all"]
@@ -129,6 +134,8 @@ def parse_git_log_v2(repo_path: Path) -> list[CommitRecord]:
 
             try:
                 lang = detect_language(Path(filepath))
+                if lang == "Python":
+                    lang = python_lang_name
             except (ValueError, OSError):
                 lang = None
 

@@ -65,7 +65,10 @@ def _detect_project_type(repo_root: Path, languages: dict, info: StackInfo) -> N
         n in languages for n in ("JavaScript", "TypeScript", "Vue", "Svelte", "HTML")
     )
     has_backend = any(
-        n in languages for n in ("Python", "Java", "Go", "Kotlin", "Scala", "Ruby", "PHP", "C#", "Rust")
+        n in languages for n in (
+            "Python", "Python 2", "Python 3",
+            "Java", "Go", "Kotlin", "Scala", "Ruby", "PHP", "C#", "Rust",
+        )
     )
     has_infra = any(n in languages for n in ("Terraform", "HCL", "YAML"))
     is_mono = _looks_like_monorepo(repo_root)

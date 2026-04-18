@@ -52,8 +52,9 @@ def _get_module(filepath: str) -> str:
 def aggregate_contributions(
     repo_path: Path,
     overrides: dict[str, str] | None = None,
+    python_lang_name: str = "Python",
 ) -> list[DeveloperStats]:
-    commits = parse_git_log_v2(repo_path)
+    commits = parse_git_log_v2(repo_path, python_lang_name=python_lang_name)
     overrides = overrides or {}
 
     # Group commits by canonical username

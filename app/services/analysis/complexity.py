@@ -18,6 +18,8 @@ class ComplexityResult:
 # Simple regex-based function detectors per language
 _FUNC_PATTERNS: dict[str, re.Pattern] = {
     "Python": re.compile(r"^\s{0,4}(async\s+)?def\s+\w+"),
+    "Python 2": re.compile(r"^\s{0,4}(async\s+)?def\s+\w+"),
+    "Python 3": re.compile(r"^\s{0,4}(async\s+)?def\s+\w+"),
     "JavaScript": re.compile(r"(function\s+\w+|\w+\s*[:=]\s*(async\s*)?(function|\([^)]*\)\s*=>))"),
     "TypeScript": re.compile(r"(function\s+\w+|\w+\s*[:=]\s*(async\s*)?(function|\([^)]*\)\s*=>))"),
     "Java": re.compile(r"(public|private|protected|static|final|\s)+[\w<>\[\]]+\s+\w+\s*\("),
@@ -30,6 +32,8 @@ _FUNC_PATTERNS: dict[str, re.Pattern] = {
 
 _IMPORT_PATTERNS: dict[str, re.Pattern] = {
     "Python": re.compile(r"^\s*(import|from)\s+\w+"),
+    "Python 2": re.compile(r"^\s*(import|from)\s+\w+"),
+    "Python 3": re.compile(r"^\s*(import|from)\s+\w+"),
     "JavaScript": re.compile(r"(import .+ from|require\s*\()"),
     "TypeScript": re.compile(r"(import .+ from|require\s*\()"),
     "Go": re.compile(r'^\s*"[\w./-]+"'),
@@ -104,4 +108,12 @@ _SUFFIX_LANG: dict[str, str] = {
 
 def _ext_to_lang(suffix: str, available: set[str]) -> str | None:
     lang = _SUFFIX_LANG.get(suffix)
-    return lang if lang in available else None
+    if lang is None:
+        return None
+    if lang in available:
+        return lang
+    if lang == "Python":
+        for versioned in ("Python 2", "Python 3"):
+            if versioned in available:
+                return versioned
+    return None

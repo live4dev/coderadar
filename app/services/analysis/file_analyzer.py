@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections import defaultdict
+import re
 
 # Directories to skip entirely
 SKIP_DIRS = {
@@ -145,6 +146,63 @@ def detect_language(path: Path) -> str | None:
     return EXTENSION_LANG_MAP.get(ext)
 
 
+def detect_python_version(repo_root: Path) -> str:
+    """
+    Inspect project-level config to determine Python 2 vs Python 3.
+    Returns "Python 2" or "Python 3". Defaults to "Python 3".
+    """
+    # 1. .python-version
+    pv = repo_root / ".python-version"
+    if pv.is_file():
+        try:
+            content = pv.read_text(encoding="utf-8", errors="replace").strip()
+            if content.startswith("2"):
+                return "Python 2"
+            return "Python 3"
+        except OSError:
+            pass
+
+    # 2. pyproject.toml — python = "^2..." or "~2.7..."
+    pyproject = repo_root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            text = pyproject.read_text(encoding="utf-8", errors="replace")
+            if re.search(r'python\s*=\s*"[\^~]?2', text):
+                return "Python 2"
+        except OSError:
+            pass
+
+    # 3. setup.py / setup.cfg — python_requires with upper bound < 3
+    for cfg_name in ("setup.py", "setup.cfg"):
+        cfg = repo_root / cfg_name
+        if cfg.is_file():
+            try:
+                text = cfg.read_text(encoding="utf-8", errors="replace")
+                if re.search(r"python_requires\s*=\s*['\"][^'\"]*<\s*3", text):
+                    return "Python 2"
+            except OSError:
+                pass
+
+    # 4. Shebang lines in the first few .py files
+    py_files_checked = 0
+    for path in repo_root.rglob("*.py"):
+        parts = path.relative_to(repo_root).parts
+        if any(p in SKIP_DIRS or p.startswith(".") for p in parts[:-1]):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                first_line = fh.readline()
+            if re.search(r"python2", first_line):
+                return "Python 2"
+        except OSError:
+            pass
+        py_files_checked += 1
+        if py_files_checked >= 10:
+            break
+
+    return "Python 3"
+
+
 def is_test_file(path: Path) -> bool:
     parts_lower = {p.lower() for p in path.parts}
     if parts_lower & TEST_PATTERNS:
@@ -212,6 +270,13 @@ def analyze_files(repo_root: Path) -> FileAnalysisResult:
             result.file_count_config += 1
         else:
             result.file_count_source += 1
+
+    # Rename generic "Python" to versioned name
+    if "Python" in lang_counts:
+        python_lang_name = detect_python_version(repo_root)
+        stat = lang_counts.pop("Python")
+        stat.name = python_lang_name
+        lang_counts[python_lang_name] = stat
 
     # Compute percentages
     total_lang_loc = sum(s.loc for s in lang_counts.values())
