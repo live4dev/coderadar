@@ -16,6 +16,7 @@ from app.models.contribution import (
 from app.models.scan_score import ScanScore, ScoreDomain
 from app.models.scan_risk import ScanRisk, RiskSeverity, RiskType, EntityType
 from app.models.scan_personal_data_finding import ScanPersonalDataFinding
+from app.models.tech_radar_override import TechRadarOverride
 
 __all__ = [
     "Project",
@@ -50,4 +51,5 @@ __all__ = [
     "RiskType",
     "EntityType",
     "ScanPersonalDataFinding",
+    "TechRadarOverride",
 ]

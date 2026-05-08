@@ -34,6 +34,7 @@ export function updateNav() {
   if (state.view === 'personal-data-report') parts.push('<span class="sep">/</span><span>Personal Data Report</span>');
   if (state.view === 'license-report') parts.push('<span class="sep">/</span><span>License Report</span>');
   if (state.view === 'tech-map') parts.push('<span class="sep">/</span><span>Tech Map</span>');
+  if (state.view === 'tech-radar') parts.push('<span class="sep">/</span><span>Tech Radar</span>');
   if (state.view === 'developers') parts.push('<span class="sep">/</span><span>Developers</span>');
   if (state.view === 'developer' && state.developerId != null) {
     parts.push('<span class="sep">/</span><a onclick="navigate(\'developers\')">Developers</a>');
@@ -66,7 +67,7 @@ export function updateNav() {
   document.getElementById('sidebar-repo-section').style.display = showRepoSection ? '' : 'none';
   document.getElementById('sidebar-scan-section').style.display = state.view === 'scan' ? '' : 'none';
 
-  ['projects', 'developers-list', 'analytics', 'personal-data-report', 'license-report', 'tech-map', 'scans-queue', 'scans', 'summary', 'languages', 'scores', 'risks', 'developers', 'admin-projects', 'admin-repos', 'admin-developers'].forEach(id => {
+  ['projects', 'developers-list', 'analytics', 'personal-data-report', 'license-report', 'tech-map', 'tech-radar', 'scans-queue', 'scans', 'summary', 'languages', 'scores', 'risks', 'developers', 'admin-projects', 'admin-repos', 'admin-developers'].forEach(id => {
     const el = document.getElementById('nav-' + id);
     if (el) el.classList.toggle('active', false);
   });
@@ -78,6 +79,7 @@ export function updateNav() {
   if (state.view === 'personal-data-report') document.getElementById('nav-personal-data-report').classList.add('active');
   if (state.view === 'license-report') document.getElementById('nav-license-report')?.classList.add('active');
   if (state.view === 'tech-map') document.getElementById('nav-tech-map').classList.add('active');
+  if (state.view === 'tech-radar') document.getElementById('nav-tech-radar')?.classList.add('active');
   if (state.view === 'scans') document.getElementById('nav-scans').classList.add('active');
   if (state.view === 'scan') {
     const el = document.getElementById('nav-' + state.tab);

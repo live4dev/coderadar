@@ -16,6 +16,7 @@ import { renderAnalytics, showAnalyticsTab, treemapMetricChange, disposeTreemap,
 import { renderPersonalDataReport } from './views/personal-data-report.js';
 import { renderLicenseReport, licenseSort } from './views/license-report.js';
 import { renderTechMap, techMapProjectChange } from './views/tech-map.js';
+import { renderTechRadar, techRadarProjectChange, techRadarSetRing, techRadarCancelEdit, techRadarSaveOverride, techRadarDeleteOverride } from './views/tech-radar.js';
 import { renderScansQueue, cancelScan, toggleScanLog, stopQueueRefresh, queueFilterProject, queueFilterRepository, queueFilterStatus, queueSort } from './views/scans-queue.js';
 import { setMain, showError } from './utils.js';
 
@@ -37,6 +38,7 @@ async function render() {
     else if (state.view === 'personal-data-report') await renderPersonalDataReport();
     else if (state.view === 'license-report')       await renderLicenseReport();
     else if (state.view === 'tech-map')            await renderTechMap();
+    else if (state.view === 'tech-radar')          await renderTechRadar();
     else if (state.view === 'admin-projects')   await renderAdminProjects();
     else if (state.view === 'admin-repos')      await renderAdminRepos();
     else if (state.view === 'admin-developers') await renderAdminDevelopers();
@@ -67,6 +69,11 @@ window.sizeYearsChange = sizeYearsChange;
 window.sizeProjectChange = sizeProjectChange;
 window.sizeGroupByChange = sizeGroupByChange;
 window.techMapProjectChange = techMapProjectChange;
+window.techRadarProjectChange = techRadarProjectChange;
+window.techRadarSetRing = techRadarSetRing;
+window.techRadarCancelEdit = techRadarCancelEdit;
+window.techRadarSaveOverride = techRadarSaveOverride;
+window.techRadarDeleteOverride = techRadarDeleteOverride;
 window.licenseSort = licenseSort;
 window.triggerScan = triggerScan;
 window.showRepoTab = showRepoTab;
@@ -92,6 +99,7 @@ document.getElementById('nav-analytics').addEventListener('click', () => navigat
 document.getElementById('nav-personal-data-report').addEventListener('click', () => navigate('personal-data-report'));
 document.getElementById('nav-license-report').addEventListener('click', () => navigate('license-report'));
 document.getElementById('nav-tech-map').addEventListener('click', () => navigate('tech-map'));
+document.getElementById('nav-tech-radar').addEventListener('click', () => navigate('tech-radar'));
 document.getElementById('nav-scans').addEventListener('click', () => navigate('scans'));
 document.getElementById('nav-scans-queue').addEventListener('click', () => navigate('scans-queue'));
 document.getElementById('nav-admin-projects').addEventListener('click', () => navigate('admin-projects'));

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, repositories, scans, developers, modules, analytics, reports
+from app.api.v1 import projects, repositories, scans, developers, modules, analytics, reports, tech_radar
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(projects.router)
@@ -9,3 +9,4 @@ api_router.include_router(developers.router)
 api_router.include_router(modules.router)
 api_router.include_router(analytics.router)
 api_router.include_router(reports.router)
+api_router.include_router(tech_radar.router)

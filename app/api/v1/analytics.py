@@ -13,6 +13,8 @@ from app.models import Project, Repository, ProjectRepository, Scan, ScanStatus,
 from app.models.contribution import DeveloperContribution
 from app.models.scan_language import ScanLanguage
 from app.schemas.analytics import TreemapNode, TechMapRepo, TechCounts, TechMapResponse, RepoLanguage, LanguageStat, SizeHistoryRepo, SizeHistoryResponse
+from app.schemas.tech_radar import TechRadarResponse
+from app.services.tech_radar.engine import compute_tech_radar
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -457,3 +459,16 @@ def get_size_history(
             ))
 
     return SizeHistoryResponse(months=months, repos=result_repos, totals=totals)
+
+
+@router.get("/tech-radar", response_model=TechRadarResponse)
+def get_tech_radar(
+    project_id: int | None = Query(None, description="Optional: limit to one project"),
+    db: Session = Depends(get_db),
+):
+    """Return tech radar blips computed from the latest scan data."""
+    if project_id is not None:
+        from app.models import Project as _Project
+        if not db.query(_Project).filter_by(id=project_id).first():
+            raise HTTPException(404, "Project not found")
+    return compute_tech_radar(db, project_id=project_id)

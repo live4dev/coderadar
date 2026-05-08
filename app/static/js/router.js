@@ -28,6 +28,9 @@ export function pathToState(pathname) {
   if (segments[0] === 'tech-map') {
     return { view: 'tech-map', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
   }
+  if (segments[0] === 'tech-radar') {
+    return { view: 'tech-radar', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
+  }
   if (segments[0] === 'developers') {
     if (segments.length === 1) return { view: 'developers', projectId: null, repoId: null, scanId: null, tab: 'summary', developerId: null, projectFilter: null };
     const devId = parseInt(segments[1], 10);
@@ -62,6 +65,7 @@ export function stateToPath(s) {
   if (s.view === 'scans-queue') return UI_BASE + '/scans-queue';
   if (s.view === 'analytics') return UI_BASE + '/analytics/' + (s.analyticsTab || 'code-size');
   if (s.view === 'tech-map') return UI_BASE + '/tech-map';
+  if (s.view === 'tech-radar') return UI_BASE + '/tech-radar';
   if (s.view === 'admin-projects')   return UI_BASE + '/admin/projects';
   if (s.view === 'admin-repos')      return UI_BASE + '/admin/repos';
   if (s.view === 'admin-developers') return UI_BASE + '/admin/developers';
